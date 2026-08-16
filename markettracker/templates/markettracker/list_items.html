@@ -1,0 +1,98 @@
+{% extends "markettracker/base.html" %}
+{% load i18n %}
+
+{% block header_nav_collapse_right %}
+    {{ block.super }}
+    <form method="get" action="{% url 'markettracker:character_login_list' %}">
+        <button type="submit" class="btn btn-success">{% trans "Log in with your character" %}</button>
+    </form>
+{% endblock %}
+
+{% block content %}
+<h2>{{ location_title }}</h2>
+
+<div class="card mt-3">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <strong>{% trans "Tracked Items" %}</strong>
+    
+    
+    <form method="get" class="d-flex gap-2 mb-0 align-items-center">
+      <select name="loc" class="form-select form-select-sm" style="max-width: 260px;" onchange="this.form.submit()">
+        {% for l in locations %}
+          <option value="{{ l.id }}" {% if selected_location and l.id == selected_location.id %}selected{% endif %}>
+            {{ l.display_name }}
+          </option>
+        {% endfor %}
+      </select>
+
+      {% if status == "red" %}
+        <button onclick="location.href='?loc={{ selected_location.id }}{% if q %}&q={{ q|urlencode }}{% endif %}'" type="button" class="btn btn-primary btn-sm" style="white-space: nowrap;">
+          {% trans "Show All" %}
+        </button>
+      {% else %}
+        <button onclick="location.href='?loc={{ selected_location.id }}&status=red{% if q %}&q={{ q|urlencode }}{% endif %}'" type="button" class="btn btn-danger btn-sm">
+          {% trans "RED" %}
+        </button>
+      {%endif%}
+        {% if status == "yellow" %}
+          <button onclick="location.href='?loc={{ selected_location.id }}{% if q %}&q={{ q|urlencode }}{% endif %}'" type="button" class="btn btn-primary btn-sm" style="white-space: nowrap;">
+            {% trans "Show All" %}
+          </button>
+        {% else %}
+          <button onclick="location.href='?loc={{ selected_location.id }}&status=yellow{% if q %}&q={{ q|urlencode }}{% endif %}'" type="button" class="btn btn-warning btn-sm">
+            {% trans "YELLOW" %}
+          </button>
+        {% endif %}
+      <input type="text" name="q" value="{{ q }}" class="form-control form-control-sm" placeholder="{% trans 'Search item...' %}">
+      <button class="btn btn-primary btn-sm" type="submit">{% trans "Search" %}</button>
+    </form>
+    
+  </div>
+  <div class="card-body p-0">
+    <div class="table-responsive table-scroll-2">
+      <table class="table table-striped mb-0 w-100" id="items-table">
+    <thead>
+        <tr>
+            <th>{% trans "Icon" %}</th>
+            <th>{% trans "Item Name" %}</th>
+            <th>{% trans "Quantity (current / desired)" %}</th>
+            <th>{% trans "Minimum Price" %}</th>
+            <th class="text-end">
+              <button id="btn-copy-multibuy" class="btn btn-primary btn-sm ms-2">
+                {% trans "Copy to Multibuy" %}
+              </button>
+            </th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for entry in items %}
+            <tr data-name="{{ entry.item.name }}"
+              data-need="{{ entry.need|default:0 }}"
+              data-visible="1"
+              class="{% if entry.status == 'RED' %}table-danger{% elif entry.status == 'YELLOW' %}table-warning{% endif %}"
+            >
+              <td><img src="https://images.evetech.net/types/{{ entry.item.id }}/icon?size=32"></td>
+              <td>
+                <a href="{% url 'markettracker:item_detail' type_id=entry.item.id %}">
+                  {{ entry.item.name }}
+                </a>  
+              </td>
+              <td>{{ entry.volume_remain|default:"0" }} / {{ entry.desired_quantity|default:"—" }}</td>
+              <td>{% if entry.price %}{{ entry.price|floatformat:2 }} ISK{% else %}<span class="text-muted">{% trans "No data" %}</span>{% endif %}</td>
+              <td class="text-end">
+                  <a href="{% url 'markettracker:create_delivery' entry.item.id %}" class="btn btn-primary btn-sm btn-deliver" data-pending="{{ entry.pending_count }}" data-pqty="{{ item.pending_qty }}">
+                      <i class="fa fa-truck"></i> {% trans "Deliver" %}
+                  </a>
+              </td>
+            </tr>
+        {% empty %}
+            <tr>
+                <td colspan="4">{% trans "No items to display." %}</td>
+            </tr>
+        {% endfor %}
+    </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,169 @@
+{% extends "markettracker/base.html" %}
+{% load i18n humanize %}
+
+{% block title %}{{ item_name }} – {% trans "Item Price History" %}{% endblock %}
+
+{% block content %}
+<div class="container my-3">
+  <div class="d-flex align-items-center mb-3">
+    <img src="{{ item_icon }}" alt="" class="me-2" style="width:48px;height:48px;border-radius:6px;">
+    <h4 class="mb-0">{{ item_name }}</h4>
+  </div>
+
+  <h6 class="text-muted mb-3">{% trans "Average price, last 30 days" %}</h6>
+
+  <div class="row g-4">
+    <!-- Jita -->
+    <div class="col-12 col-lg-6">
+      <div class="card h-100">
+        <div class="card-header"><strong>{{ region_name_f }}</strong></div>
+        <div class="card-body">
+          <div style="height:260px"><canvas id="chartJita"></canvas></div>
+          {% if not has_data_f %}
+            <p class="text-muted small mt-2 mb-0">
+              {% trans "No recent data from ESI for this item/region." %}
+            </p>
+          {% endif %}
+        </div>
+        <div class="card-footer py-2 small">
+          <div class="row">
+            <div class="col-6">
+              <div class="text-muted">{% trans "Best SELL" %}</div>
+              {% if forge_best_sell != None %}
+                <div><strong>{{ forge_best_sell|floatformat:0|intcomma }}</strong> {% trans "ISK" %}
+                  {% if forge_best_src == "hist" %}<span class="text-muted">({% trans "hist." %})</span>{% endif %}
+                </div>
+              {% else %}<div class="text-muted">—</div>{% endif %}
+            </div>
+            <div class="col-6">
+              <div class="text-muted">{% trans "Best BUY" %}</div>
+              {% if forge_best_buy != None %}
+                <div><strong>{{ forge_best_buy|floatformat:0|intcomma }}</strong> {% trans "ISK" %}
+                  {% if forge_best_src == "hist" %}<span class="text-muted">({% trans "hist." %})</span>{% endif %}
+                </div>
+              {% else %}<div class="text-muted">—</div>{% endif %}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Amarr -->
+    <div class="col-12 col-lg-6">
+      <div class="card h-100">
+        <div class="card-header"><strong>{{ region_name_d }}</strong></div>
+        <div class="card-body">
+          <div style="height:260px"><canvas id="chartAmarr"></canvas></div>
+          {% if not has_data_d %}
+            <p class="text-muted small mt-2 mb-0">
+              {% trans "No recent data from ESI for this item/region." %}
+            </p>
+          {% endif %}
+        </div>
+        <div class="card-footer py-2 small">
+          <div class="row">
+            <div class="col-6">
+              <div class="text-muted">{% trans "Best SELL" %}</div>
+              {% if domain_best_sell != None %}
+                <div><strong>{{ domain_best_sell|floatformat:0|intcomma }}</strong> {% trans "ISK" %}
+                  {% if domain_best_src == "hist" %}<span class="text-muted">({% trans "hist." %})</span>{% endif %}
+                </div>
+              {% else %}<div class="text-muted">—</div>{% endif %}
+            </div>
+            <div class="col-6">
+              <div class="text-muted">{% trans "Best BUY" %}</div>
+              {% if domain_best_buy != None %}
+                <div><strong>{{ domain_best_buy|floatformat:0|intcomma }}</strong> {% trans "ISK" %}
+                  {% if domain_best_src == "hist" %}<span class="text-muted">({% trans "hist." %})</span>{% endif %}
+                </div>
+              {% else %}<div class="text-muted">—</div>{% endif %}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {% if request.GET.debug %}
+  <div class="alert alert-info mt-3">
+    <div><strong>{% trans "Diag:" %}</strong></div>
+    <div>{% trans "Forge raw len:" %} {{ diag.forge_raw }}{% if diag.forge_err %}, {% trans "err:" %} {{ diag.forge_err }}{% endif %}</div>
+    <div>{% trans "Forge sample (last):" %} <code style="white-space:pre;">{{ diag.forge_sample }}</code></div>
+    <div>{% trans "Domain raw len:" %} {{ diag.domain_raw }}{% if diag.domain_err %}, {% trans "err:" %} {{ diag.domain_err }}{% endif %}</div>
+    <div>{% trans "Domain sample (last):" %} <code style="white-space:pre;">{{ diag.domain_sample }}</code></div>
+    <div class="text-muted small mt-2">
+      {% trans "Points:" %} {% trans "Jita" %}={{ forge_json|length }}, {% trans "Amarr" %}={{ domain_json|length }}, {% trans "Labels=" %}{{ labels_json|length }}<br>
+      {% trans "Best src:" %} {% trans "Jita" %}={{ forge_best_src }}, {% trans "Amarr" %}={{ domain_best_src }}
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="card mt-4">
+    <div class="card-header d-flex align-items-center justify-content-between">
+      <strong>{% trans "Local offers (snapshot)" %}</strong>
+      <span class="text-muted small">
+        {% if offers_scope %}
+          {% trans "scope:" %} {{ offers_scope }} | {% trans "id:" %} {{ offers_location_id }}
+        {% endif %}
+        | {% trans "shown:" %} {{ offers|length }}
+      </span>
+    </div>
+
+    <div class="card-body p-0">
+      {% if offers %}
+        <div class="table-responsive">
+          <table class="table table-sm mb-0 align-middle">
+            <thead class="table-light">
+              <tr>
+                <th style="width:40px;"></th>
+                <th>{% trans "Item" %}</th>
+                <th class="text-end">{% trans "Remaining" %}</th>
+                <th class="text-end">{% trans "Price" %}</th>
+                <th class="text-nowrap">{% trans "Issued" %}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for o in offers %}
+                <tr>
+                  <td>
+                    <img src="{{ o.icon }}" alt="" style="width:24px;height:24px;border-radius:4px;">
+                  </td>
+                  <td class="text-nowrap">{{ o.name }}</td>
+                  <td class="text-end">{{ o.remaining|intcomma }}</td>
+                  <td class="text-end">
+                    <strong>{{ o.price|floatformat:0|intcomma }}</strong> {% trans "ISK" %}
+                  </td>
+                  <td class="text-nowrap">
+                    {% if o.issued %}{{ o.issued|date:"Y-m-d H:i" }}{% else %}<span class="text-muted">—</span>{% endif %}
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <div class="p-3 text-muted">
+          {% trans "No local offers in DB snapshot for this item/location." %}
+        </div>
+      {% endif %}
+    </div>
+  </div>
+  <div class="mt-3">
+    <a href="{% url 'markettracker:list_items' %}" class="btn btn-secondary btn-sm">← {% trans "Back to list" %}</a>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script>
+  const labels = {{ labels_json|safe }};
+  const jita   = {{ forge_json|safe }};
+  const amarr  = {{ domain_json|safe }};
+  const commonOpts = {
+    responsive: true, maintainAspectRatio: false,
+    scales: { x:{ title:{display:true,text:'{% trans "Date" %}'} }, y:{ title:{display:true,text:'{% trans "Average Price (ISK)" %}'}, beginAtZero:false } },
+    plugins: { legend:{display:false}, tooltip:{ mode:'index', intersect:false } }, spanGaps:true
+  };
+  new Chart(document.getElementById('chartJita'),  { type:'line', data:{ labels, datasets:[{label:'{% trans "Average" %}', data:jita, tension:0.2, pointRadius:0, borderWidth:2, borderColor:'rgba(33,150,243,1)',  backgroundColor:'rgba(33,150,243,0.15)'}]}, options:commonOpts });
+  new Chart(document.getElementById('chartAmarr'), { type:'line', data:{ labels, datasets:[{label:'{% trans "Average" %}', data:amarr,tension:0.2, pointRadius:0, borderWidth:2, borderColor:'rgba(76,175,80,1)', backgroundColor:'rgba(76,175,80,0.15)'}]}, options:commonOpts });
+</script>
+{% endblock %}

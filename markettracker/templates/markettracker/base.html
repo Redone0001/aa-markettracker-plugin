@@ -1,0 +1,232 @@
+{% extends 'allianceauth/base-bs5.html' %}
+{% load i18n %}
+{% load navactive %}
+
+{% block page_title %}
+    {% trans "Market Tracker Plugin" %}
+{% endblock %}
+
+{% block header_nav_brand %}
+    {% trans "Market Tracker Plugin" %}
+{% endblock header_nav_brand %}
+
+{% block header_nav_collapse_left %}
+    {{ block.super }}
+    <a
+        class="nav-link {% navactive request 'markettracker:list_items' %}"
+        href="{% url 'markettracker:list_items' %}"
+    >
+        {% trans "List Items" %}
+    </a>
+    
+    <a
+        class="nav-link {% navactive request 'markettracker:contracts_list' %}"
+        href="{% url 'markettracker:contracts_list' %}"
+    >
+        {% trans "Contracts list" %}
+    </a>
+    {% if perms.markettracker.can_manage_stocks %}
+    <a
+        class="nav-link {% navactive request 'markettracker:manage_stock' %}"
+        href="{% url 'markettracker:manage_stock' %}"
+    >
+        {% trans "Manage Stock" %}
+    </a>
+    {% endif %}
+    <a
+        class="nav-link {% navactive request 'markettracker:deliveries_list' %}"
+        href="{% url 'markettracker:deliveries_list' %}"
+    >
+        {% trans "Deliveries" %}
+    </a>
+    {% if perms.markettracker.can_manage_deliveries %}
+    <a
+        class="nav-link {% navactive request 'markettracker:admin_deliveries' %}"
+        href="{% url 'markettracker:admin_deliveries' %}"
+    >
+        {% trans "Manage Deliveries" %}
+    </a>
+    {% endif %}
+    {% if user.is_superuser %}
+    <a
+        class="nav-link {% navactive request 'markettracker:diagnostics' %}"
+        href="{% url 'markettracker:diagnostics' %}"
+    >
+        {% trans "Diagnostics" %}
+    </a>
+    {% endif %}
+
+    
+
+{% endblock header_nav_collapse_left %}
+
+{% block content %}
+    <div class="allianceauth-markettracker-plugin">
+        {% block details %}{% endblock %}
+    </div>
+{% endblock %}
+
+{% block extra_javascript %}
+    {{ block.super }}
+    <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/jquery@3/dist/jquery.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+
+    <script>
+    $(function() {
+      // Items
+      const $items = $('.select-search-item');
+      if ($items.length) {
+        $items.select2({
+          width: '100%',
+          placeholder: $items.data('placeholder') || 'Search item…',
+          minimumInputLength: 2,
+          ajax: {
+            url: "{% url 'markettracker:item_search' %}",
+            dataType: "json",
+            delay: 250,
+            data: function (params) {
+              return {
+                q: params.term,
+                page: params.page || 1,
+                loc: "{{ selected_location.id }}"
+              };
+            },
+            processResults: function (data) { return data; }
+          }
+        });
+      }
+
+      // Fittings
+      const $fittings = $('.select-search-fitting');
+      if ($fittings.length) {
+        $fittings.select2({
+          width: '100%',
+          placeholder: $fittings.data('placeholder') || 'Search fitting…',
+          minimumInputLength: 2,
+          ajax: {
+            url: "{% url 'markettracker:fitting_search' %}",
+            delay: 200,
+            data: params => ({ q: params.term || '', page: params.page || 1 }),
+            processResults: data => ({ results: data.results, pagination: data.pagination })
+          }
+        });
+      }
+    });
+    </script>
+    <script>
+document.querySelectorAll('.btn-deliver').forEach(function(btn){
+  btn.addEventListener('click', function(e){
+    var n = parseInt(this.dataset.pending || '0', 10);
+    if (n > 0) {
+      var q = this.dataset.pqty || '0';
+      var msg = `Alert: There are alredy planned deliveries for this item `
+              + `(${n} reported, in total ${q}) You still want to add yours?`;
+      if (!confirm(msg)) {
+        e.preventDefault();
+      }
+    }
+  });
+});
+</script>
+<script>
+document.querySelectorAll('.btn-deliver-contract').forEach(function(btn){
+  btn.addEventListener('click', function(e){
+    var n = parseInt(this.dataset.pending || '0', 10);
+    if (n > 0) {
+      var q = this.dataset.pqty || '0';
+      var msg = `Alert: There are alredy planned deliveries for this contract `
+              + `(${n} reported, in total ${q}). You still want to add yours?`;
+      if (!confirm(msg)) {
+        e.preventDefault();
+      }
+    }
+  });
+});
+</script>
+<script>
+(function(){
+  const btn = document.getElementById('btn-copy-multibuy');
+  if (!btn) return;
+
+  btn.addEventListener('click', async () => {
+    const rows = document.querySelectorAll('#items-table tbody tr');
+    const lines = [];
+    rows.forEach(tr => {
+      if (tr.offsetParent === null) return;
+
+      const need = parseInt(tr.dataset.need || '0', 10);
+      if (need > 0) {
+        const name = tr.dataset.name || '';
+        if (name) {
+          lines.push(`${name}\t${need}`);
+        }
+      }
+    });
+
+    if (!lines.length) {
+      alert('No items copied (need <= 0 for every entry).');
+      return;
+    }
+
+    const text = lines.join('\n');
+    try {
+      await navigator.clipboard.writeText(text);
+      btn.textContent = 'Copied!';
+      setTimeout(() => btn.textContent = 'Copy to Multibuy', 1200);
+    } catch (e) {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+      btn.textContent = 'Copied!';
+      setTimeout(() => btn.textContent = 'Copy to Multibuy', 1200);
+    }
+  });
+})();
+</script>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.table-responsive.table-scroll-1 {
+    max-height: 30vh;
+    overflow-y: auto;
+}
+.table-responsive.table-scroll-2 {
+    max-height: 80vh;
+    overflow-y: auto;
+}
+.table-responsive.table-scroll-1 thead th,
+.table-responsive.table-scroll-2 thead th {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    background-color: var(--bs-card-bg);
+}
+.select2-container--default .select2-selection--single {
+    background-color: #fff !important;
+    color: #000 !important;
+}
+.select2-container--default .select2-results__option {
+    color: #000 !important;
+}
+.card-header .btn.force-btn {
+  --bs-btn-bg: var(--bs-primary);
+  --bs-btn-border-color: var(--bs-primary);
+  --bs-btn-color: #fff;
+}
+.card-header .btn.force-btn.btn-warning {
+  --bs-btn-bg: var(--bs-warning);
+  --bs-btn-border-color: var(--bs-warning);
+  --bs-btn-color: #000;
+}
+.card-header .btn.force-btn.btn-secondary {
+  --bs-btn-bg: var(--bs-secondary);
+  --bs-btn-border-color: var(--bs-secondary);
+  --bs-btn-color: #fff;
+}
+</style>
+{% endblock %}

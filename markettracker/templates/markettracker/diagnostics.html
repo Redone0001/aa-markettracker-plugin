@@ -1,0 +1,459 @@
+{% extends "markettracker/base.html" %}
+{% load humanize %}
+
+{% block title %}Diagnostics{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+
+  <div class="d-flex align-items-center justify-content-between mb-3">
+    <div>
+      <h2 class="mb-0">MarketTracker Diagnostics</h2>
+      <div class="text-muted small">
+        Window: last 48h (since {{ since|date:"Y-m-d H:i:s" }}) · last 24h (since {{ since_24h|date:"Y-m-d H:i:s" }})
+      </div>
+    </div>
+    <div class="text-end">
+      <div class="small text-muted">Last log</div>
+      <div class="fw-bold">{{ stats.last_log_time|default:"—" }}</div>
+    </div>
+  </div>
+
+  <!-- FILTERS -->
+  <form method="get" class="row g-2 align-items-end mb-3">
+    <div class="col-12 col-md-3">
+      <label class="form-label small text-muted">Source</label>
+      <select name="source" class="form-select form-select-sm">
+        <option value="">(all)</option>
+        {% for s in sources %}
+          <option value="{{ s }}" {% if s == selected_source %}selected{% endif %}>{{ s }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-12 col-md-3">
+      <label class="form-label small text-muted">Level</label>
+      <select name="level" class="form-select form-select-sm">
+        <option value="">(all)</option>
+        {% for l in levels %}
+          <option value="{{ l }}" {% if l == selected_level %}selected{% endif %}>{{ l }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-12 col-md-6 d-flex gap-2">
+      <button class="btn btn-sm btn-primary mt-4" type="submit">Apply</button>
+      <a class="btn btn-sm btn-outline-secondary mt-4" href="?">Reset</a>
+      <a class="btn btn-sm btn-outline-info mt-4" href="?source=items">Only items</a>
+      <a class="btn btn-sm btn-outline-info mt-4" href="?source=contracts">Only contracts</a>
+      <a class="btn btn-sm btn-outline-danger mt-4" href="?level=ERROR">Only errors</a>
+    </div>
+  </form>
+
+  <!-- COPY BOX -->
+  <div class="card mb-4">
+    <div class="card-header d-flex align-items-center justify-content-between">
+      <div class="fw-bold">Copy / Share</div>
+      <div class="text-muted small">Use “Copy …” buttons below</div>
+    </div>
+    <div class="card-body">
+      <textarea id="copyBox" class="form-control" rows="7" readonly
+        placeholder="Here will appear text to copy…"></textarea>
+      <div class="d-flex gap-2 mt-2">
+        <button type="button" class="btn btn-sm btn-success" onclick="copyFromBox()">Copy to clipboard</button>
+        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="clearBox()">Clear</button>
+      </div>
+      <div id="copyStatus" class="small text-muted mt-2"></div>
+    </div>
+  </div>
+
+  <!-- STATS -->
+  <div class="row g-3 mb-4">
+    <div class="col-12 col-md-3">
+      <div class="card">
+        <div class="card-body">
+          <div class="text-muted small">Tracked contracts</div>
+          <div class="fs-3 fw-bold">{{ stats.tracked_contracts }}</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-12 col-md-3">
+      <div class="card">
+        <div class="card-body">
+          <div class="text-muted small">Contract snapshots</div>
+          <div class="fs-3 fw-bold">{{ stats.snapshots }}</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-12 col-md-2">
+      <div class="card">
+        <div class="card-body">
+          <div class="text-muted small">ERROR (24h)</div>
+          <div class="fs-3 fw-bold">{{ stats.errors_24h }}</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-12 col-md-2">
+      <div class="card">
+        <div class="card-body">
+          <div class="text-muted small">items 403 (24h)</div>
+          <div class="fs-3 fw-bold">{{ stats.items_403_24h }}</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-12 col-md-2">
+      <div class="card">
+        <div class="card-body">
+          <div class="text-muted small">suspicious all-zero (24h)</div>
+          <div class="fs-3 fw-bold">{{ stats.suspicious_24h }}</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- EVENT COUNTS -->
+  <div class="card mb-4">
+    <div class="card-header d-flex align-items-center justify-content-between">
+      <div class="fw-bold">Event counts (24h)</div>
+      <button type="button" class="btn btn-sm btn-outline-primary"
+        onclick="fillCopyBoxFromTable('eventsTable','Event counts (24h)')">Copy event counts</button>
+    </div>
+    <div class="card-body table-responsive">
+      <table id="eventsTable" class="table table-sm align-middle">
+        <thead>
+          <tr>
+            <th>Source</th>
+            <th>Event</th>
+            <th class="text-end">Count</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in event_counts_24h %}
+            <tr>
+              <td><code>{{ row.source }}</code></td>
+              <td><code>{{ row.event }}</code></td>
+              <td class="text-end">{{ row.cnt }}</td>
+            </tr>
+          {% empty %}
+            <tr><td colspan="3" class="text-muted">No events in last 24h.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ERRORS -->
+  <div class="card mb-4 border-danger">
+    <div class="card-header d-flex align-items-center justify-content-between">
+      <div class="fw-bold text-danger">Errors (last 48h)</div>
+      <button type="button" class="btn btn-sm btn-outline-danger"
+        onclick="fillCopyBoxFromTable('errorsTable','Errors (48h)')">Copy errors</button>
+    </div>
+    <div class="card-body table-responsive">
+      <table id="errorsTable" class="table table-sm align-middle">
+        <thead>
+          <tr>
+            <th style="width: 180px;">Time</th>
+            <th style="width: 70px;">Lvl</th>
+            <th style="width: 90px;">Source</th>
+            <th style="width: 160px;">Event</th>
+            <th>Message</th>
+            <th style="width: 35%;">Data</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for l in errors %}
+            <tr>
+              <td><code>{{ l.created|date:"Y-m-d H:i:s" }}</code></td>
+              <td><span class="badge bg-danger">{{ l.level }}</span></td>
+              <td><code>{{ l.source }}</code></td>
+              <td><code>{{ l.event }}</code></td>
+              <td class="text-break">{{ l.message|default:"" }}</td>
+              <td>
+                {% if l.data %}
+                  <details>
+                    <summary class="small">show</summary>
+                    <pre class="small mb-0">{{ l.data|pprint }}</pre>
+                  </details>
+                {% else %}
+                  <span class="text-muted small">—</span>
+                {% endif %}
+              </td>
+            </tr>
+          {% empty %}
+            <tr><td colspan="6" class="text-muted">No errors in this window.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- KEY WORKER LOGS -->
+  <div class="card mb-4">
+    <div class="card-header d-flex align-items-center justify-content-between">
+      <div class="fw-bold">Worker logs (key events)</div>
+      <button type="button" class="btn btn-sm btn-outline-primary"
+        onclick="fillCopyBoxFromTable('runsTable','Worker logs (key events)')">Copy worker logs</button>
+    </div>
+    <div class="card-body table-responsive">
+      <table id="runsTable" class="table table-sm align-middle">
+        <thead>
+          <tr>
+            <th style="width: 180px;">Time</th>
+            <th style="width: 70px;">Lvl</th>
+            <th style="width: 90px;">Source</th>
+            <th style="width: 180px;">Event</th>
+            <th>Message</th>
+            <th style="width: 35%;">Data</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for l in last_runs %}
+            <tr>
+              <td><code>{{ l.created|date:"Y-m-d H:i:s" }}</code></td>
+              <td>
+                {% if l.level == "ERROR" %}
+                  <span class="badge bg-danger">{{ l.level }}</span>
+                {% elif l.level == "WARN" %}
+                  <span class="badge bg-warning text-dark">{{ l.level }}</span>
+                {% else %}
+                  <span class="badge bg-secondary">{{ l.level }}</span>
+                {% endif %}
+              </td>
+              <td><code>{{ l.source }}</code></td>
+              <td><code>{{ l.event }}</code></td>
+              <td class="text-break">{{ l.message|default:"" }}</td>
+              <td>
+                {% if l.data %}
+                  <details>
+                    <summary class="small">show</summary>
+                    <pre class="small mb-0">{{ l.data|pprint }}</pre>
+                  </details>
+                {% else %}
+                  <span class="text-muted small">—</span>
+                {% endif %}
+              </td>
+            </tr>
+          {% empty %}
+            <tr><td colspan="6" class="text-muted">No key events in this window.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- DB DUMP: TRACKED CONTRACTS -->
+  <div class="card mb-4">
+    <div class="card-header d-flex align-items-center justify-content-between">
+      <div class="fw-bold">DB dump: TrackedContract (first 200)</div>
+      <button type="button" class="btn btn-sm btn-outline-primary"
+        onclick="fillCopyBoxFromTable('trackedContractsTable','DB dump: TrackedContract')">Copy tracked contracts</button>
+    </div>
+    <div class="card-body table-responsive">
+      <table id="trackedContractsTable" class="table table-sm align-middle">
+        <thead>
+          <tr>
+            <th>Title filter / Fitting</th>
+            <th style="width: 110px;">Mode</th>
+            <th style="width: 120px;">Desired</th>
+            <th style="width: 120px;">Last status</th>
+            <th style="width: 120px;">Max price</th>
+            <th style="width: 90px;">Active</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for tc in tracked_contracts %}
+            <tr>
+              <td class="text-break">
+                <strong>
+                  {% if tc.fitting %}{{ tc.fitting }}{% else %}{{ tc.title_filter }}{% endif %}
+                </strong>
+                {% if tc.fitting and tc.title_filter %}
+                  <div class="text-muted small">title_filter: {{ tc.title_filter }}</div>
+                {% endif %}
+              </td>
+              <td><code>{{ tc.mode|default:"—" }}</code></td>
+              <td>{{ tc.desired_quantity|default:"—" }}</td>
+              <td>
+                {% if tc.last_status == "RED" %}
+                  <span class="badge bg-danger">{{ tc.last_status }}</span>
+                {% elif tc.last_status == "YELLOW" %}
+                  <span class="badge bg-warning text-dark">{{ tc.last_status }}</span>
+                {% elif tc.last_status == "OK" %}
+                  <span class="badge bg-success">{{ tc.last_status }}</span>
+                {% else %}
+                  <span class="badge bg-secondary">{{ tc.last_status|default:"—" }}</span>
+                {% endif %}
+              </td>
+              <td><code>{{ tc.max_price|default:"—" }}</code></td>
+              <td>
+                {% if tc.is_active %}
+                  <span class="badge bg-success">yes</span>
+                {% else %}
+                  <span class="badge bg-secondary">no</span>
+                {% endif %}
+              </td>
+            </tr>
+          {% empty %}
+            <tr><td colspan="6" class="text-muted">No TrackedContract rows.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- DB DUMP: CONTRACT SNAPSHOTS -->
+  <div class="card mb-4">
+    <div class="card-header d-flex align-items-center justify-content-between">
+      <div class="fw-bold">DB dump: ContractSnapshot (latest 200)</div>
+      <button type="button" class="btn btn-sm btn-outline-primary"
+        onclick="fillCopyBoxFromTable('snapshotsTable','DB dump: ContractSnapshot')">Copy snapshots</button>
+    </div>
+    <div class="card-body table-responsive">
+      <table id="snapshotsTable" class="table table-sm align-middle">
+        <thead>
+          <tr>
+            <th style="width: 140px;">Contract ID</th>
+            <th style="width: 130px;">Owner char</th>
+            <th style="width: 110px;">Status</th>
+            <th style="width: 180px;">Issued</th>
+            <th>Title</th>
+            <th style="width: 100px;">Items?</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for s in snapshots %}
+            <tr>
+              <td><code>{{ s.contract_id }}</code></td>
+              <td><code>{{ s.owner_character_id|default:"—" }}</code></td>
+              <td><code>{{ s.status|default:"—" }}</code></td>
+              <td><code>{{ s.date_issued|date:"Y-m-d H:i:s" }}</code></td>
+              <td class="text-break">{{ s.title|default:"" }}</td>
+              <td>
+                {% if s.items %}
+                  <span class="badge bg-success">yes</span>
+                {% else %}
+                  <span class="badge bg-secondary">no</span>
+                {% endif %}
+              </td>
+            </tr>
+          {% empty %}
+            <tr><td colspan="6" class="text-muted">No ContractSnapshot rows.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- FULL LOG STREAM -->
+  <div class="card mb-5">
+    <div class="card-header d-flex align-items-center justify-content-between">
+      <div class="fw-bold">Full log stream (last 500)</div>
+      <button type="button" class="btn btn-sm btn-outline-primary"
+        onclick="fillCopyBoxFromTable('logsTable','Full log stream')">Copy full logs</button>
+    </div>
+    <div class="card-body table-responsive">
+      <table id="logsTable" class="table table-sm align-middle">
+        <thead>
+          <tr>
+            <th style="width: 180px;">Time</th>
+            <th style="width: 70px;">Lvl</th>
+            <th style="width: 90px;">Source</th>
+            <th style="width: 160px;">Event</th>
+            <th>Message</th>
+            <th style="width: 35%;">Data</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for l in logs %}
+            <tr>
+              <td><code>{{ l.created|date:"Y-m-d H:i:s" }}</code></td>
+              <td>
+                {% if l.level == "ERROR" %}
+                  <span class="badge bg-danger">{{ l.level }}</span>
+                {% elif l.level == "WARN" %}
+                  <span class="badge bg-warning text-dark">{{ l.level }}</span>
+                {% else %}
+                  <span class="badge bg-secondary">{{ l.level }}</span>
+                {% endif %}
+              </td>
+              <td><code>{{ l.source }}</code></td>
+              <td><code>{{ l.event }}</code></td>
+              <td class="text-break">{{ l.message|default:"" }}</td>
+              <td>
+                {% if l.data %}
+                  <details>
+                    <summary class="small">show</summary>
+                    <pre class="small mb-0">{{ l.data|pprint }}</pre>
+                  </details>
+                {% else %}
+                  <span class="text-muted small">—</span>
+                {% endif %}
+              </td>
+            </tr>
+          {% empty %}
+            <tr><td colspan="6" class="text-muted">No logs in this window.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<script>
+function setStatus(msg) {
+  const el = document.getElementById("copyStatus");
+  if (el) el.textContent = msg || "";
+}
+
+function clearBox() {
+  const box = document.getElementById("copyBox");
+  if (box) box.value = "";
+  setStatus("");
+}
+
+function copyFromBox() {
+  const box = document.getElementById("copyBox");
+  if (!box || !box.value) { setStatus("Nothing to copy."); return; }
+  navigator.clipboard.writeText(box.value).then(
+    () => setStatus("Copied to clipboard ✅"),
+    () => setStatus("Copy failed (browser permission). You can Ctrl+C manually.")
+  );
+}
+
+function tableToTSV(tableId) {
+  const table = document.getElementById(tableId);
+  if (!table) return "";
+
+  const rows = Array.from(table.querySelectorAll("tr"));
+  const out = [];
+
+  for (const r of rows) {
+    const cells = Array.from(r.querySelectorAll("th,td"));
+    const vals = cells.map(c => {
+      let t = (c.innerText || "").replace(/\r?\n+/g, " ").trim();
+      t = t.replace(/\t/g, " ");
+      return t;
+    });
+    if (vals.length) out.push(vals.join("\t"));
+  }
+  return out.join("\n");
+}
+
+function fillCopyBoxFromTable(tableId, title) {
+  const box = document.getElementById("copyBox");
+  if (!box) return;
+
+  const header = [
+    `=== MarketTracker diagnostics: ${title} ===`,
+    `URL: ${window.location.href}`,
+    `Time: ${new Date().toISOString()}`,
+    ""
+  ].join("\n");
+
+  const body = tableToTSV(tableId);
+  box.value = header + body;
+  setStatus(`Prepared copy text for: ${title}`);
+  box.scrollIntoView({behavior: "smooth", block: "center"});
+}
+</script>
+{% endblock %}

@@ -1,0 +1,21 @@
+{% extends "markettracker/base.html" %}
+{% load i18n %}
+
+{% block content %}
+<h2>{% trans "Declare Delivery" %}</h2>
+
+{% if tracked_item %}
+    <h4>{{ tracked_item.item.name }}</h4>
+    <img src="https://images.evetech.net/types/{{ tracked_item.item.id }}/icon?size=64" alt="{{ tracked_item.item.name }}">
+{% endif %}
+
+<form method="post" class="form">
+    {% csrf_token %}
+    <div class="mb-3">
+        <label class="form-label">{% trans "Quantity" %}</label>
+        {{ form.declared_quantity }}
+    </div>
+    <button type="submit" class="btn btn-primary">{% trans "Submit" %}</button>
+    <a href="{% url 'markettracker:deliveries_list' %}" class="btn btn-secondary">{% trans "Cancel" %}</a>
+</form>
+{% endblock %}

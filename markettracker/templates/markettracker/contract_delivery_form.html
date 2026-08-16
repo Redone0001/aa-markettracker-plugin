@@ -1,0 +1,13 @@
+{% extends "markettracker/base.html" %}
+{% load i18n %}
+{% block content %}
+<h2>{% trans "Declare contract delivery" %} – {{ tc.display_name }}</h2>
+<form method="post" class="mb-3">
+  {% csrf_token %}
+  {{ form.as_p }}
+  <button type="submit" class="btn btn-primary">{% trans "Save" %}</button>
+  <a href="{% url 'markettracker:contracts_list' %}" class="btn btn-secondary">
+    {% trans "Cancel" %}
+  </a>
+</form>
+{% endblock %}
