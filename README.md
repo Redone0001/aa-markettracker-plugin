@@ -35,6 +35,19 @@ must upgrade Alliance Auth before installing this release.
 pip install aa-markettracker-plugin
 ```
 
+### Install the Alliance Auth 5 beta branch
+
+Until the 2.0 release is published on PyPI, install or reinstall the current
+Alliance Auth 5 beta directly from the `aa5-upgrade` branch:
+
+```bash
+python -m pip install --force-reinstall --no-deps --no-cache-dir "git+https://github.com/Redone0001/aa-markettracker-plugin.git@aa5-upgrade"
+```
+
+The `--no-deps` option deliberately prevents pip from changing the Alliance
+Auth environment. Use this command only after the dependencies listed above
+have been installed in the active Alliance Auth virtual environment.
+
 Add the dependency apps and MarketTracker to the Alliance Auth project's
 `local.py`. `modeltranslation` must be loaded before the other apps:
 
