@@ -1,11 +1,15 @@
-from django.db import migrations, models
 import django.db.models.deletion
+from django.db import migrations, models
 
 
 TABLE = "markettracker_trackeditem"
 REF_TABLE = "markettracker_trackedlocation"
 REF_COL = "id"
 LEGACY_COLS = ("item_id", "structure_id")
+
+
+def _is_mysql(schema_editor) -> bool:
+    return schema_editor.connection.vendor == "mysql"
 
 
 def _column_exists(cursor, table: str, col: str) -> bool:
@@ -101,6 +105,12 @@ def drop_legacy_unique_if_exists(apps, schema_editor):
     - then drop the unique index if possible
     - if still not possible -> skip (non-fatal)
     """
+    # The repair below is specifically for MySQL/MariaDB. Other database
+    # backends can retain the legacy constraint until the structure field is
+    # removed by migration 0017.
+    if not _is_mysql(schema_editor):
+        return
+
     table = "markettracker_trackeditem"
     cols = ("item_id", "structure_id")
 
@@ -171,6 +181,20 @@ def ensure_location_column(apps, schema_editor):
     If missing -> add it as nullable BIGINT to allow backfill.
     Adds an index and FK for location_id if missing.
     """
+    if not _is_mysql(schema_editor):
+        TrackedItem = apps.get_model("markettracker", "TrackedItem")
+        TrackedLocation = apps.get_model("markettracker", "TrackedLocation")
+        field = models.ForeignKey(
+            TrackedLocation,
+            blank=True,
+            null=True,
+            on_delete=django.db.models.deletion.CASCADE,
+            related_name="tracked_items",
+        )
+        field.set_attributes_from_name("location")
+        schema_editor.add_field(TrackedItem, field)
+        return
+
     with schema_editor.connection.cursor() as cursor:
         if not _column_exists(cursor, TABLE, "location_id"):
             cursor.execute(f"ALTER TABLE `{TABLE}` ADD COLUMN `location_id` bigint NULL;")
@@ -219,6 +243,15 @@ def ensure_new_unique_if_missing(apps, schema_editor):
     """
     Ensure UNIQUE(item_id, location_id) exists on markettracker_trackeditem.
     """
+    if not _is_mysql(schema_editor):
+        TrackedItem = apps.get_model("markettracker", "TrackedItem")
+        schema_editor.alter_unique_together(
+            TrackedItem,
+            set(),
+            {("item", "location")},
+        )
+        return
+
     cols = ("item_id", "location_id")
     with schema_editor.connection.cursor() as cursor:
         if not _column_exists(cursor, TABLE, "location_id"):
@@ -250,6 +283,7 @@ def ensure_new_unique_if_missing(apps, schema_editor):
 
 def forwards(apps, schema_editor):
     TrackedLocation = apps.get_model("markettracker", "TrackedLocation")
+    TrackedItem = apps.get_model("markettracker", "TrackedItem")
 
     default_loc = TrackedLocation.objects.filter(is_default=True, is_active=True).first()
     if not default_loc:
@@ -258,6 +292,10 @@ def forwards(apps, schema_editor):
         return
 
     default_id = int(default_loc.pk)
+
+    if not _is_mysql(schema_editor):
+        TrackedItem.objects.filter(location__isnull=True).update(location_id=default_id)
+        return
 
     with schema_editor.connection.cursor() as cursor:
         has_structure_id = _column_exists(cursor, TABLE, "structure_id")

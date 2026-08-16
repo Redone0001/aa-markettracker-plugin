@@ -1,10 +1,13 @@
 from allianceauth.authentication.models import CharacterOwnership
 from django.conf import settings
 from django.contrib.auth.models import Group
+from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 from esi.models import Token
+
+from .security import is_allowed_discord_webhook_url
 
 try:
     from fittings.models import Fitting
@@ -24,8 +27,20 @@ class DiscordWebhook(models.Model):
     class Meta:
         default_permissions = ()
 
+    def clean(self):
+        super().clean()
+        if self.url and not is_allowed_discord_webhook_url(self.url):
+            raise ValidationError(
+                {
+                    "url": _(
+                        "Enter an HTTPS discord.com webhook URL using the "
+                        "/api/webhooks/<id>/<token> path."
+                    )
+                }
+            )
+
     def __str__(self) -> str:
-        return f"{self.name} – {self.url}"
+        return self.name
 
 
 class DiscordMessage(models.Model):

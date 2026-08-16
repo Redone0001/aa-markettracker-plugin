@@ -19,7 +19,41 @@ placed in Authorization headers and are not directly written to logs by the
 reviewed code. Those positive controls do not offset the authorization and
 webhook-secret issues below.
 
-| Area | Assessment |
+### Remediation status
+
+The findings below describe the reconstructed PyPI 1.4.0 baseline. The current
+2.0 working tree contains remediations for SEC-01 through SEC-07 and an Alliance
+Auth 5.2 migration:
+
+- Discord targets are allowlisted, redirects are disabled, and tokens and
+  response bodies are excluded from logs and display values.
+- Diagnostics is superuser-only and task logs have automatic configurable
+  retention.
+- AllianceAuth permissions, selected-location scoping, POST requirements, CSRF
+  forms, and enqueue throttling are enforced on the affected views.
+- Select2 is served locally with a reviewed hash; shared jQuery and Chart.js
+  assets reuse AA's versioned template bundles (including AA's SRI policy).
+- A migration purges historical Discord task-log rows.
+- ESI access now uses django-esi's generated client and AA `Token` objects rather
+  than maintaining a second bearer-token and retry implementation.
+- Character ownership and Discord roles use Alliance Auth's supported public
+  APIs, and templates reuse AA's Bootstrap 5 and Chart.js bundles.
+
+Deployment still requires rotating webhooks exposed by 1.4.0 and purging copies
+from application logs, log aggregators, exports, and backups. The remediations
+have regression coverage in minimal Alliance Auth 5.0.1 and 5.2.0 environments; a staging
+deployment with the production database and service configuration is still
+required before production rollout.
+
+Current Python 3.11 result on both Alliance Auth 5.0.1 and 5.2.0: **70 passed**,
+with no failures, errors, xfails, or pending model migrations. Django's system
+checks and Ruff also pass. A clean database successfully applies the complete AA
+and MarketTracker migration graph through migration 0017.
+
+The score table below records the original PyPI 1.4.0 baseline, not the
+remediated working tree.
+
+| Baseline area | Assessment |
 | --- | --- |
 | Security posture | 3/10 — high risk until access controls and webhook handling are fixed |
 | Correctness | 4/10 — several user-visible and destructive defects |
@@ -241,23 +275,19 @@ specific exceptions plus deliberate failure behavior.
 Static tools did not identify the principal authorization and secret-logging
 findings; those required semantic review.
 
-## Added audit tests
+## Added audit and AA 5 tests
 
-The dependency-free suites are in [`audit_tests`](audit_tests/README.md). Run:
+The security and quality contracts are in [`audit_tests`](audit_tests/README.md),
+and the AA integration/provider tests are in `markettracker/tests`. Run:
 
 ```bash
-.venv/bin/python -m pytest -q audit_tests
+pytest -q
 ```
 
-Result at audit time: **7 passed, 29 strict xfailed**. Passing tests cover
-timeouts, CSRF-exemption absence, secret literals, syntax, and already-correct
-permission/method cases. Strict xfails encode the confirmed security and
-quality defects. A fix produces `XPASS(strict)` until the xfail marker is
-removed, turning the contract into a permanent regression test.
-
-The published Django tests could not collect in this clean environment because
-the package does not declare or install Django/AllianceAuth. Static inspection
-also confirms that their imported application symbols no longer exist.
+The suite now covers authorization and HTTP-method contracts, webhook redaction
+and allowlisting, dependency metadata, AA 5 template bundles, django-esi token
+and pagination behavior, and a clean migrated database. The stale published
+tests have been replaced with current integration tests.
 
 ## Recommended remediation order
 

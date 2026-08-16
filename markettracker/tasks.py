@@ -1,17 +1,22 @@
+import json
 import logging
 import random
 import traceback
-import json
 
-import requests
 from celery import shared_task
 from django.core.cache import cache
 from django.db import connection
 from django.db.models import Q
-
 from django.utils import timezone as _tz
 from django.utils.dateparse import parse_datetime
 from esi.errors import TokenInvalidError
+from esi.exceptions import (
+    ESIBucketLimitException,
+    ESIErrorLimitException,
+    HTTPClientError,
+    HTTPNotModified,
+    HTTPServerError,
+)
 from esi.models import Token
 from eveuniverse.models import EveType
 
@@ -21,7 +26,6 @@ from .discord import (
     send_contracts_alert,
     send_items_alert,
 )
-
 from .models import (
     ContractDelivery,
     ContractSnapshot,
@@ -32,22 +36,21 @@ from .models import (
     TrackedContract,
     TrackedItem,
 )
-
+from .providers import (
+    get_character_contract_items,
+    get_character_contracts,
+    get_character_orders,
+    get_region_orders,
+    get_structure_orders,
+)
 from .utils import (
-    _task_suffix,
-    esi_headers,
-    esi_get_json,
     _ctx,
     _location_name,
     _parse_esi_datetime,
+    _task_suffix,
     contract_matches,
     db_log,
     fetch_contract_items,
-    ESI_BASE_URL,
-    esi_cooldown_active,
-    esi_retry_wait_seconds,
-    esi_set_cooldown,
-    _fetch_character_orders,
     location_display_name,
 )
 
@@ -113,10 +116,6 @@ def fetch_market_data_auto():
 def refresh_contracts():
     """Dispatcher (keeps old task name for existing installations)."""
     db_log(source="contracts", event="start", message="refresh_contracts dispatch", data=_ctx())
-
-    if esi_cooldown_active():
-        db_log(source="contracts", event="cooldown", message="ESI cooldown active; skip dispatch", data=_ctx())
-        return
 
     lock_key = "mt:lock:refresh_contracts"
     if cache.add(lock_key, "1", timeout=60 * 10) is False:
@@ -207,7 +206,7 @@ def fetch_market_data_for_location(character_id: int, location_pk: int):
     # token (structure needs token for /markets/structures/)
     try:
         mc = MarketCharacter.objects.get(character__character_id=character_id)
-        admin_access_token = mc.token.valid_access_token()
+        token = mc.token
     except Exception as e:
         db_log(level="ERROR", source="items", event="token_refresh_failed", message=str(e), data=_ctx({**ctx_base}))
         return
@@ -245,7 +244,9 @@ def fetch_market_data_for_location(character_id: int, location_pk: int):
         if loc.scope == "region":
             seen_orders = _fetch_region_orders_sql_for_location(int(loc.location_id), int(loc.id), table_name=tmp_table)
         else:
-            seen_orders = _fetch_structure_orders_for_location(int(loc.location_id), admin_access_token, int(loc.id), table_name=tmp_table)
+            seen_orders = _fetch_structure_orders_for_location(
+                int(loc.location_id), token, int(loc.id), table_name=tmp_table
+            )
 
         if not seen_orders:
             db_log(level="WARN", source="items", event="import_empty", message="No orders imported for location", data=_ctx({**ctx_base}))
@@ -378,7 +379,7 @@ def fetch_market_data(character_id: int):
     # --- token (structure mode needs token) ---
     try:
         mc = MarketCharacter.objects.get(character__character_id=character_id)
-        admin_access_token = mc.token.valid_access_token()
+        token = mc.token
     except MarketCharacter.DoesNotExist:
         db_log(
             level="WARN",
@@ -438,8 +439,10 @@ def fetch_market_data(character_id: int):
         if config.scope == "region":
             seen_orders = _fetch_region_orders_sql(config.location_id, table_name=tmp_table)
         else:
-            # structure -> uses esi_get_json + _save_orders_sql(table_name,...)
-            seen_orders = _fetch_structure_orders(config.location_id, admin_access_token, table_name=tmp_table)
+            # django-esi handles authentication, caching, pagination, and rate limits.
+            seen_orders = _fetch_structure_orders(
+                config.location_id, token, table_name=tmp_table
+            )
 
         db_log(
             source="items",
@@ -545,7 +548,7 @@ def fetch_market_data(character_id: int):
             )
 
             # rollback statuses
-            for (ti, old_s, new_s, _p, _t, _d) in changed_statuses:
+            for (ti, old_s, _new_s, _p, _t, _d) in changed_statuses:
                 TrackedItem.objects.filter(pk=ti.pk).update(last_status=old_s)
 
             # cleanup tmp
@@ -624,93 +627,41 @@ def _fetch_region_orders_sql(region_id: int, *, table_name: str) -> set[int]:
 
     for tracked in tracked_items:
         type_id = tracked.item.id
-        page = 1
-        while True:
-            url = f"{ESI_BASE_URL}/markets/{region_id}/orders/"
-            data, meta = esi_get_json(
-                url,
-                access_token=None,
-                params={"order_type": "sell", "type_id": type_id, "page": page},
-                timeout=20,
-                source="items",
-                event="esi_region_error",
-                ctx={"region_id": region_id, "type_id": type_id, "page": page, "url": url},
-                max_attempts=4,
-            )
-            if data is None:
-                break
-
-            try:
-                pages = int(meta["headers"].get("X-Pages", 1) or 1)
-            except ValueError:
-                pages = 1
-
-            # data already contains sell orders, but keep the filter defensively
-            sell_orders = [o for o in data if isinstance(o, dict) and not o.get("is_buy_order")]
-            seen_orders.update(_save_orders_sql(table_name, sell_orders, tracked, region_id))
-
-            if page >= pages:
-                break
-            page += 1
+        data = get_region_orders(region_id, type_id, order_type="sell")
+        sell_orders = [
+            order
+            for order in data
+            if isinstance(order, dict) and not order.get("is_buy_order")
+        ]
+        seen_orders.update(_save_orders_sql(table_name, sell_orders, tracked, region_id))
 
     return seen_orders
 
 
 
-def _fetch_structure_orders(structure_id: int, access_token: str, table_name: str) -> set[int]:
+def _fetch_structure_orders(structure_id: int, token: Token, table_name: str) -> set[int]:
     tracked_map = {
         int(t.item_id): t
         for t in TrackedItem.objects.select_related("item").all()
     }
 
     seen_orders: set[int] = set()
-    page = 1
+    orders_by_tracked: dict[int, list[dict]] = {}
+    for order in get_structure_orders(structure_id, token):
+        if not isinstance(order, dict) or order.get("is_buy_order"):
+            continue
 
-    while True:
-        url = f"{ESI_BASE_URL}/markets/structures/{structure_id}/"
-        data, meta = esi_get_json(
-            url,
-            access_token=access_token,
-            params={"page": page},
-            timeout=20,
-            source="items",
-            event="esi_structure_error",
-            ctx={"structure_id": structure_id, "page": page, "url": url},
-            max_attempts=4,
-        )
-        if data is None:
-            break
+        type_id = order.get("type_id")
+        if not type_id:
+            continue
 
-        try:
-            pages = int(meta["headers"].get("X-Pages", 1) or 1)
-        except ValueError:
-            pages = 1
-
-        orders_by_tracked: dict[int, list[dict]] = {}
-
-        for order in data:
-            if not isinstance(order, dict):
-                continue
-            if order.get("is_buy_order"):
-                continue
-
-            type_id = order.get("type_id")
-            if not type_id:
-                continue
-
-            tracked = tracked_map.get(int(type_id))
-            if not tracked:
-                continue
-
+        tracked = tracked_map.get(int(type_id))
+        if tracked:
             orders_by_tracked.setdefault(tracked.pk, []).append(order)
 
-        for orders in orders_by_tracked.values():
-            tracked = tracked_map[int(orders[0]["type_id"])]
-            seen_orders.update(_save_orders_sql(table_name, orders, tracked, structure_id))
-
-        if page >= pages:
-            break
-        page += 1
+    for orders in orders_by_tracked.values():
+        tracked = tracked_map[int(orders[0]["type_id"])]
+        seen_orders.update(_save_orders_sql(table_name, orders, tracked, structure_id))
 
     return seen_orders
 
@@ -723,89 +674,41 @@ def _fetch_region_orders_sql_for_location(region_id: int, location_pk: int, *, t
 
     for tracked in tracked_items:
         type_id = tracked.item.id
-        page = 1
-        while True:
-            url = f"{ESI_BASE_URL}/markets/{region_id}/orders/"
-            data, meta = esi_get_json(
-                url,
-                access_token=None,
-                params={"order_type": "sell", "type_id": type_id, "page": page},
-                timeout=20,
-                source="items",
-                event="esi_region_error",
-                ctx={"region_id": region_id, "type_id": type_id, "page": page, "url": url},
-                max_attempts=4,
-            )
-            if data is None:
-                break
-
-            try:
-                pages = int(meta["headers"].get("X-Pages", 1) or 1)
-            except ValueError:
-                pages = 1
-
-            sell_orders = [o for o in data if isinstance(o, dict) and not o.get("is_buy_order")]
-            seen_orders.update(_save_orders_sql(table_name, sell_orders, tracked, region_id))
-
-            if page >= pages:
-                break
-            page += 1
+        data = get_region_orders(region_id, type_id, order_type="sell")
+        sell_orders = [
+            order
+            for order in data
+            if isinstance(order, dict) and not order.get("is_buy_order")
+        ]
+        seen_orders.update(_save_orders_sql(table_name, sell_orders, tracked, region_id))
 
     return seen_orders
 
 
-def _fetch_structure_orders_for_location(structure_id: int, access_token: str, location_pk: int, *, table_name: str) -> set[int]:
+def _fetch_structure_orders_for_location(
+    structure_id: int, token: Token, location_pk: int, *, table_name: str
+) -> set[int]:
     tracked_map = {
         int(t.item_id): t
         for t in TrackedItem.objects.filter(location_id=int(location_pk)).select_related("item").all()
     }
 
     seen_orders: set[int] = set()
-    page = 1
+    orders_by_tracked: dict[int, list[dict]] = {}
+    for order in get_structure_orders(structure_id, token):
+        if not isinstance(order, dict) or order.get("is_buy_order"):
+            continue
+        type_id = order.get("type_id")
+        if not type_id:
+            continue
 
-    while True:
-        url = f"{ESI_BASE_URL}/markets/structures/{structure_id}/"
-        data, meta = esi_get_json(
-            url,
-            access_token=access_token,
-            params={"page": page},
-            timeout=20,
-            source="items",
-            event="esi_structure_error",
-            ctx={"structure_id": structure_id, "page": page, "url": url},
-            max_attempts=4,
-        )
-        if data is None:
-            break
-
-        try:
-            pages = int(meta["headers"].get("X-Pages", 1) or 1)
-        except ValueError:
-            pages = 1
-
-        orders_by_tracked: dict[int, list[dict]] = {}
-        for order in data:
-            if not isinstance(order, dict):
-                continue
-            if order.get("is_buy_order"):
-                continue
-            type_id = order.get("type_id")
-            if not type_id:
-                continue
-
-            tracked = tracked_map.get(int(type_id))
-            if not tracked:
-                continue
-
+        tracked = tracked_map.get(int(type_id))
+        if tracked:
             orders_by_tracked.setdefault(tracked.pk, []).append(order)
 
-        for orders in orders_by_tracked.values():
-            tracked = tracked_map[int(orders[0]["type_id"])]
-            seen_orders.update(_save_orders_sql(table_name, orders, tracked, structure_id))
-
-        if page >= pages:
-            break
-        page += 1
+    for orders in orders_by_tracked.values():
+        tracked = tracked_map[int(orders[0]["type_id"])]
+        seen_orders.update(_save_orders_sql(table_name, orders, tracked, structure_id))
 
     return seen_orders
 
@@ -899,22 +802,6 @@ def _update_deliveries(config):
         return
 
 
-    access_cache: dict[int, str] = {}
-
-    def _get_access(token: Token) -> str | None:
-        cached = access_cache.get(token.id)
-        if cached:
-            return cached
-        try:
-            at = token.valid_access_token()
-            access_cache[token.id] = at
-            return at
-        except TokenInvalidError:
-            logger.warning("[MarketTracker] Skipping invalid token for char %s (id=%s)", token.character_id, token.id)
-            return None
-        except Exception:
-            logger.exception("[MarketTracker] Token refresh failed for char %s (id=%s)", token.character_id, token.id)
-            return None
     def _tokens_for_delivery(d: Delivery) -> list[Token]:
         if d.character_id:
             char_id = getattr(d.character, "character_id", None)
@@ -943,12 +830,20 @@ def _update_deliveries(config):
 
         total_delivered = 0
         for token in tokens:
-            access_token = _get_access(token)
-            if not access_token:
-                continue
-
             try:
-                orders = _fetch_character_orders(token.character_id, access_token, config)
+                orders = get_character_orders(token.character_id, token)
+                if config.scope == "region":
+                    orders = [
+                        order
+                        for order in orders
+                        if order.get("region_id") == config.location_id
+                    ]
+                else:
+                    orders = [
+                        order
+                        for order in orders
+                        if order.get("location_id") == config.location_id
+                    ]
 
                 delivered_from_orders = 0
                 for o in orders:
@@ -970,6 +865,12 @@ def _update_deliveries(config):
 
                 total_delivered += delivered_from_orders
 
+            except TokenInvalidError:
+                logger.warning(
+                    "[MarketTracker] Skipping invalid token for char %s (id=%s)",
+                    token.character_id,
+                    token.id,
+                )
             except Exception:
                 logger.exception("[MarketTracker] Orders fetch failed for char %s (delivery id=%s)", token.character_id, d.id)
 
@@ -1006,9 +907,6 @@ def refresh_contracts_for_character(
     seen_outstanding_count = 0
 
     try:
-        if esi_cooldown_active():
-            raise self.retry(countdown=60)
-
         try:
             mc = MarketCharacter.objects.select_related("token").get(
                 token__character_id=character_id
@@ -1018,103 +916,76 @@ def refresh_contracts_for_character(
             return
 
         token = mc.token
+        now = _tz.now()
         try:
-            access_token = token.valid_access_token()
+            data = get_character_contracts(
+                character_id, token, force_refresh=force_refresh
+            )
+        except HTTPNotModified:
+            data = []
+            not_modified = True
+            db_log(source="contracts", event="not_modified", data=_ctx(ctx))
         except TokenInvalidError:
             db_log(level="WARN", source="contracts", event="token_invalid", data=_ctx(ctx))
             return
-
-        page = 1
-        url = f"{ESI_BASE_URL}/characters/{character_id}/contracts/"
-
-        etag_key = f"mt:etag:contracts:{character_id}"
-        headers = esi_headers(access_token)
-
-        if not force_refresh:
-            etag = cache.get(etag_key)
-            if etag:
-                headers["If-None-Match"] = etag
-
-        now = _tz.now()
-
-        # ---- fetch pages ----
-        while True:
-            resp = requests.get(
-                url,
-                params={"datasource": "tranquility", "page": page},
-                headers=headers,
-                timeout=20,
-            )
-
-            if resp.status_code == 304:
-                not_modified = True
-                db_log(source="contracts", event="not_modified", data=_ctx({**ctx, "page": page}))
-                break
-
-            if resp.status_code in (420, 429, 503):
-                wait_s = esi_retry_wait_seconds(dict(resp.headers or {}))
-                esi_set_cooldown(wait_s)
-                raise self.retry(countdown=wait_s)
-
-            if resp.status_code == 403:
+        except (ESIErrorLimitException, ESIBucketLimitException) as exc:
+            wait_s = max(1, int(getattr(exc, "reset", 60) or 60))
+            raise self.retry(countdown=wait_s, exc=exc) from exc
+        except HTTPClientError as exc:
+            if exc.status_code == 403:
                 db_log(source="contracts", event="forbidden", data=_ctx(ctx))
                 return
-
-            if resp.status_code == 404:
-                # char vanished etc. treat as no data; do not cleanup to be safe
+            if exc.status_code == 404:
                 db_log(source="contracts", event="not_found", data=_ctx(ctx))
                 return
+            raise
+        except HTTPServerError as exc:
+            raise self.retry(countdown=60, exc=exc) from exc
 
-            resp.raise_for_status()
+        # django-esi's results() has already fetched and validated every page.
+        for contract_data in data:
+            if (contract_data.get("status") or "").lower() != "outstanding":
+                continue
 
-            if page == 1 and resp.headers.get("ETag"):
-                cache.set(etag_key, resp.headers.get("ETag"), timeout=60 * 60 * 6)
+            contract_id = contract_data.get("contract_id")
+            if not contract_id:
+                continue
+            contract_id = int(contract_id)
 
-            data = resp.json() or []
-            pages = int(resp.headers.get("X-Pages", 1) or 1)
+            seen_outstanding_ids.add(contract_id)
+            seen_outstanding_count += 1
 
-            # authoritative outstanding list for this character
-            for c in data:
-                if (c.get("status") or "").lower() != "outstanding":
-                    continue
-
-                cid = c.get("contract_id")
-                if not cid:
-                    continue
-                cid = int(cid)
-
-                seen_outstanding_ids.add(cid)
-                seen_outstanding_count += 1
-
-                ContractSnapshot.objects.update_or_create(
-                    contract_id=cid,
-                    defaults={
-                        "owner_character_id": int(character_id),
-                        "type": c.get("type") or "",
-                        "availability": c.get("availability") or "",
-                        "status": c.get("status") or "",
-                        "title": c.get("title") or "",
-                        "date_issued": _parse_esi_datetime(c.get("date_issued")),
-                        "date_expired": _parse_esi_datetime(c.get("date_expired")),
-                        "start_location_id": c.get("start_location_id"),
-                        "end_location_id": c.get("end_location_id"),
-                        "price": c.get("price") or 0,
-                        "reward": c.get("reward") or 0,
-                        "collateral": c.get("collateral") or 0,
-                        "volume": c.get("volume") or 0,
-                        "for_corporation": bool(c.get("for_corporation") or False),
-                        "assignee_id": c.get("assignee_id"),
-                        "acceptor_id": c.get("acceptor_id"),
-                        "issuer_id": c.get("issuer_id"),
-                        "issuer_corporation_id": c.get("issuer_corporation_id"),
-                        "date_completed": _parse_esi_datetime(c.get("date_completed")),
-                        "fetched_at": now,
-                    },
-                )
-
-            if page >= pages:
-                break
-            page += 1
+            ContractSnapshot.objects.update_or_create(
+                contract_id=contract_id,
+                defaults={
+                    "owner_character_id": int(character_id),
+                    "type": contract_data.get("type") or "",
+                    "availability": contract_data.get("availability") or "",
+                    "status": contract_data.get("status") or "",
+                    "title": contract_data.get("title") or "",
+                    "date_issued": _parse_esi_datetime(contract_data.get("date_issued")),
+                    "date_expired": _parse_esi_datetime(contract_data.get("date_expired")),
+                    "start_location_id": contract_data.get("start_location_id"),
+                    "end_location_id": contract_data.get("end_location_id"),
+                    "price": contract_data.get("price") or 0,
+                    "reward": contract_data.get("reward") or 0,
+                    "collateral": contract_data.get("collateral") or 0,
+                    "volume": contract_data.get("volume") or 0,
+                    "for_corporation": bool(
+                        contract_data.get("for_corporation") or False
+                    ),
+                    "assignee_id": contract_data.get("assignee_id"),
+                    "acceptor_id": contract_data.get("acceptor_id"),
+                    "issuer_id": contract_data.get("issuer_id"),
+                    "issuer_corporation_id": contract_data.get(
+                        "issuer_corporation_id"
+                    ),
+                    "date_completed": _parse_esi_datetime(
+                        contract_data.get("date_completed")
+                    ),
+                    "fetched_at": now,
+                },
+            )
 
         db_log(
             source="contracts",
@@ -1217,9 +1088,6 @@ def refresh_contracts_for_character(
 def refresh_contract_items_for_contract(self, character_id: int, contract_id: int):
     """Fetch and store items for a specific contract (single ESI call)."""
     ctx = {"character_id": int(character_id), "contract_id": int(contract_id)}
-    if esi_cooldown_active():
-        raise self.retry(countdown=60)
-
     try:
         mc = MarketCharacter.objects.select_related("token").get(token__character_id=character_id)
     except MarketCharacter.DoesNotExist:
@@ -1227,34 +1095,24 @@ def refresh_contract_items_for_contract(self, character_id: int, contract_id: in
 
     token = mc.token
     try:
-        access_token = token.valid_access_token()
+        items = get_character_contract_items(character_id, contract_id, token)
     except TokenInvalidError:
         return
+    except (ESIErrorLimitException, ESIBucketLimitException) as exc:
+        wait_s = max(1, int(getattr(exc, "reset", 60) or 60))
+        raise self.retry(countdown=wait_s, exc=exc) from exc
+    except HTTPClientError as exc:
+        if exc.status_code == 403:
+            db_log(source="contracts", event="items_403", data=_ctx(ctx))
+            ContractSnapshot.objects.filter(contract_id=contract_id).update(items=[])
+            return
+        if exc.status_code == 404:
+            ContractSnapshot.objects.filter(contract_id=contract_id).update(items=[])
+            return
+        raise
+    except HTTPServerError as exc:
+        raise self.retry(countdown=60, exc=exc) from exc
 
-    url = f"{ESI_BASE_URL}/characters/{character_id}/contracts/{contract_id}/items/"
-    resp = requests.get(
-        url,
-        params={"datasource": "tranquility"},
-        headers=esi_headers(access_token),
-        timeout=20,
-    )
-
-    if resp.status_code == 403:
-        db_log(source="contracts", event="items_403", data=_ctx(ctx))
-        ContractSnapshot.objects.filter(contract_id=contract_id).update(items=[])
-        return
-
-    if resp.status_code in (420, 429, 503):
-        wait_s = esi_retry_wait_seconds(dict(resp.headers or {}))
-        esi_set_cooldown(wait_s)
-        raise self.retry(countdown=wait_s)
-
-    if resp.status_code == 404:
-        ContractSnapshot.objects.filter(contract_id=contract_id).update(items=[])
-        return
-
-    resp.raise_for_status()
-    items = resp.json() or []
     ContractSnapshot.objects.filter(contract_id=contract_id).update(items=items)
     db_log(source="contracts", event="items_ok", data=_ctx({**ctx, "count": len(items)}))
 
@@ -1592,9 +1450,10 @@ def _recalculate_contract_statuses_and_alert(all_contracts, yellow, red, allow_e
         )
 
     # send alerts
-    location_name = location_display_name(loc)
-    send_contracts_alert(changed_rows, location_name)
-    contracts_restocked_alert(changed_rows, location_name)
+    config = MarketTrackingConfig.objects.first()
+    location_name = _location_name(config) if config else "All locations"
+    send_contracts_alert(changed, location_name)
+    contracts_restocked_alert(changed, location_name)
 
     return {"changed": len(changed)}
 
@@ -1703,7 +1562,7 @@ def _update_contract_deliveries(all_contracts, allow_esi_fetch: bool = True):
 
 
 def _recalculate_contract_statuses_and_alert_per_location(all_contracts, yellow, red, allow_esi_fetch: bool = True):
-    from .models import TrackedLocation, TrackedContractLocation
+    from .models import TrackedContractLocation
     from .utils import location_display_name
 
     tracked_loc_qs = (

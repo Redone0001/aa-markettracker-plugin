@@ -1,15 +1,15 @@
 # Third Party
+# Alliance Auth
+from allianceauth.authentication.models import User
+from allianceauth.eveonline.models import EveCharacter
 from charlink.app_imports.utils import AppImport, LoginImport
 
 # Django
 from django.contrib.auth.models import Permission
 from django.db.models import Exists, OuterRef
 
-# Alliance Auth
-from allianceauth.authentication.models import CharacterOwnership, User
-from allianceauth.eveonline.models import EveCharacter
-
 # MarketTracker
+from markettracker.auth import ownership_for_token
 from markettracker.models import MarketCharacter
 
 
@@ -20,15 +20,7 @@ def _add_character_markettracker(request, token):
     - This does NOT create/admin-link market admin characters.
     - If character already exists in MarketTracker, do nothing.
     """
-    eve_character, _ = EveCharacter.objects.get_or_create(
-        character_id=token.character_id,
-        defaults={"character_name": token.character_name},
-    )
-
-    ownership, _ = CharacterOwnership.objects.get_or_create(
-        character=eve_character,
-        user=request.user,
-    )
+    ownership = ownership_for_token(token=token, user=request.user)
 
     # If already linked, do not overwrite type/admin state
     if MarketCharacter.objects.filter(character=ownership).exists():
@@ -86,7 +78,6 @@ app_import = AppImport(
             add_character=_add_character_markettracker,
             scopes=[
                 "esi-contracts.read_character_contracts.v1",
-                "esi-assets.read_assets.v1",
                 "esi-markets.read_character_orders.v1",
             ],
             check_permissions=lambda user: user.has_perm("markettracker.basic_access"),

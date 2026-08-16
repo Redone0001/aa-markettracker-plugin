@@ -1,5 +1,5 @@
 {% extends "markettracker/base.html" %}
-{% load i18n humanize %}
+{% load i18n humanize static %}
 
 {% block title %}{{ item_name }} – {% trans "Item Price History" %}{% endblock %}
 
@@ -152,9 +152,12 @@
     <a href="{% url 'markettracker:list_items' %}" class="btn btn-secondary btn-sm">← {% trans "Back to list" %}</a>
   </div>
 </div>
+{% endblock content %}
 
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-<script>
+{% block extra_javascript %}
+  {{ block.super }}
+  {% include "bundles/chart-js.html" %}
+  <script>
   const labels = {{ labels_json|safe }};
   const jita   = {{ forge_json|safe }};
   const amarr  = {{ domain_json|safe }};
@@ -165,5 +168,5 @@
   };
   new Chart(document.getElementById('chartJita'),  { type:'line', data:{ labels, datasets:[{label:'{% trans "Average" %}', data:jita, tension:0.2, pointRadius:0, borderWidth:2, borderColor:'rgba(33,150,243,1)',  backgroundColor:'rgba(33,150,243,0.15)'}]}, options:commonOpts });
   new Chart(document.getElementById('chartAmarr'), { type:'line', data:{ labels, datasets:[{label:'{% trans "Average" %}', data:amarr,tension:0.2, pointRadius:0, borderWidth:2, borderColor:'rgba(76,175,80,1)', backgroundColor:'rgba(76,175,80,0.15)'}]}, options:commonOpts });
-</script>
-{% endblock %}
+  </script>
+{% endblock extra_javascript %}

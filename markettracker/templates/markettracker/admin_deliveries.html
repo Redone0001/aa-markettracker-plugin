@@ -34,9 +34,15 @@
       <td>{{ d.declared_quantity }}</td>
       <td>{{ d.get_status_display }}</td>
       <td>
-        <a href="{% url 'markettracker:delete_delivery' d.pk %}" class="btn btn-danger btn-sm">{% trans "Delete" %}</a>
+        <form method="post" action="{% url 'markettracker:delete_delivery' d.pk %}" class="d-inline">
+          {% csrf_token %}
+          <button type="submit" class="btn btn-danger btn-sm">{% trans "Delete" %}</button>
+        </form>
         {% if d.status == "PENDING" %}
-        <a href="{% url 'markettracker:finish_delivery' d.pk %}" class="btn btn-success btn-sm">{% trans "Finish" %}</a>
+        <form method="post" action="{% url 'markettracker:finish_delivery' d.pk %}" class="d-inline">
+          {% csrf_token %}
+          <button type="submit" class="btn btn-success btn-sm">{% trans "Finish" %}</button>
+        </form>
         {% endif %}
       </td>
     </tr>
@@ -84,11 +90,15 @@
       <td>{{ d.declared_quantity }}</td>
       <td>{{ d.get_status_display }}</td>
       <td>
-        <a href="{% url 'markettracker:delete_contract_delivery' d.pk %}"
-          class="btn btn-danger btn-sm">{% trans "Delete" %}</a>
+        <form method="post" action="{% url 'markettracker:delete_contract_delivery' d.pk %}" class="d-inline">
+          {% csrf_token %}
+          <button type="submit" class="btn btn-danger btn-sm">{% trans "Delete" %}</button>
+        </form>
         {% if d.status == "PENDING" %}
-          <a href="{% url 'markettracker:finish_contract_delivery' d.pk %}"
-             class="btn btn-success btn-sm">{% trans "Finish" %}</a>
+          <form method="post" action="{% url 'markettracker:finish_contract_delivery' d.pk %}" class="d-inline">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-success btn-sm">{% trans "Finish" %}</button>
+          </form>
         {% endif %}
       </td>
     </tr>

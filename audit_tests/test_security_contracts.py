@@ -1,30 +1,25 @@
-"""Dependency-free security contracts for the reconstructed PyPI source.
-
-The strict xfails document confirmed vulnerabilities without pretending the
-current implementation is secure.  When a vulnerability is fixed, pytest will
-report XPASS as a failure so the xfail marker can be removed and the contract
-kept as a normal regression test.
-"""
+"""Dependency-free security contracts for the reconstructed PyPI source."""
 
 from __future__ import annotations
 
 import ast
+import hashlib
 import re
 from pathlib import Path
 
 import pytest
+
+from markettracker.security import (
+    is_allowed_discord_webhook_url,
+    redact_discord_webhook_url,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 VIEWS = ROOT / "markettracker" / "views.py"
 URLS = ROOT / "markettracker" / "urls.py"
 DISCORD = ROOT / "markettracker" / "discord.py"
 MODELS = ROOT / "markettracker" / "models.py"
-
-KNOWN_VULNERABILITY = pytest.mark.xfail(
-    strict=True,
-    reason="Confirmed by the 2026-08-16 source audit; remove xfail after remediation",
-)
-
+VENDOR = ROOT / "markettracker" / "static" / "markettracker" / "vendor"
 
 def _tree(path: Path) -> ast.Module:
     return ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
@@ -44,19 +39,26 @@ def _decorators(path: Path, name: str) -> list[str]:
 @pytest.mark.parametrize(
     ("view_name", "permission"),
     [
-        pytest.param("list_items_view", "markettracker.basic_access", marks=KNOWN_VULNERABILITY),
-        pytest.param("item_search", "markettracker.can_manage_stocks", marks=KNOWN_VULNERABILITY),
-        pytest.param("fitting_search", "markettracker.can_manage_stocks", marks=KNOWN_VULNERABILITY),
-        pytest.param("character_login_manage", "markettracker.can_manage_stocks", marks=KNOWN_VULNERABILITY),
-        pytest.param("manage_stock_view", "markettracker.can_manage_stocks", marks=KNOWN_VULNERABILITY),
-        pytest.param("refresh_market_data", "markettracker.can_manage_stocks", marks=KNOWN_VULNERABILITY),
-        pytest.param("delete_trackeditem", "markettracker.can_manage_stocks", marks=KNOWN_VULNERABILITY),
-        pytest.param("tracked_contract_delete", "markettracker.can_manage_stocks", marks=KNOWN_VULNERABILITY),
-        pytest.param("admin_deliveries_view", "markettracker.can_manage_deliveries", marks=KNOWN_VULNERABILITY),
-        pytest.param("delete_delivery", "markettracker.can_manage_deliveries", marks=KNOWN_VULNERABILITY),
-        pytest.param("finish_delivery", "markettracker.can_manage_deliveries", marks=KNOWN_VULNERABILITY),
-        pytest.param("delete_contract_delivery", "markettracker.can_manage_deliveries", marks=KNOWN_VULNERABILITY),
-        pytest.param("finish_contract_delivery", "markettracker.can_manage_deliveries", marks=KNOWN_VULNERABILITY),
+        ("list_items_view", "markettracker.basic_access"),
+        ("character_login_list", "markettracker.basic_access"),
+        ("create_delivery", "markettracker.basic_access"),
+        ("create_contract_delivery", "markettracker.basic_access"),
+        ("deliveries_list_view", "markettracker.basic_access"),
+        ("item_search", "markettracker.can_manage_stocks"),
+        ("fitting_search", "markettracker.can_manage_stocks"),
+        ("character_login_manage", "markettracker.can_manage_stocks"),
+        ("manage_stock_view", "markettracker.can_manage_stocks"),
+        ("refresh_market_data", "markettracker.can_manage_stocks"),
+        ("contract_errors_view", "markettracker.can_manage_stocks"),
+        ("delete_trackeditem", "markettracker.can_manage_stocks"),
+        ("tracked_contract_delete", "markettracker.can_manage_stocks"),
+        ("tracked_contract_edit", "markettracker.can_manage_stocks"),
+        ("refresh_contracts_data", "markettracker.can_manage_stocks"),
+        ("admin_deliveries_view", "markettracker.can_manage_deliveries"),
+        ("delete_delivery", "markettracker.can_manage_deliveries"),
+        ("finish_delivery", "markettracker.can_manage_deliveries"),
+        ("delete_contract_delivery", "markettracker.can_manage_deliveries"),
+        ("finish_contract_delivery", "markettracker.can_manage_deliveries"),
         ("contracts_list_view", "markettracker.basic_access"),
     ],
 )
@@ -68,12 +70,12 @@ def test_sensitive_views_require_the_intended_permission(view_name: str, permiss
 @pytest.mark.parametrize(
     "view_name",
     [
-        pytest.param("refresh_market_data", marks=KNOWN_VULNERABILITY),
-        pytest.param("refresh_contracts_data", marks=KNOWN_VULNERABILITY),
-        pytest.param("delete_delivery", marks=KNOWN_VULNERABILITY),
-        pytest.param("finish_delivery", marks=KNOWN_VULNERABILITY),
-        pytest.param("delete_contract_delivery", marks=KNOWN_VULNERABILITY),
-        pytest.param("finish_contract_delivery", marks=KNOWN_VULNERABILITY),
+        "refresh_market_data",
+        "refresh_contracts_data",
+        "delete_delivery",
+        "finish_delivery",
+        "delete_contract_delivery",
+        "finish_contract_delivery",
         "delete_trackeditem",
         "tracked_contract_delete",
     ],
@@ -82,7 +84,6 @@ def test_state_changing_views_reject_get(view_name: str) -> None:
     assert "require_POST" in _decorators(VIEWS, view_name)
 
 
-@KNOWN_VULNERABILITY
 def test_diagnostics_is_enforced_as_superuser_only() -> None:
     node = _function(VIEWS, "diagnostics_view")
     source = ast.unparse(node)
@@ -92,7 +93,6 @@ def test_diagnostics_is_enforced_as_superuser_only() -> None:
     )
 
 
-@KNOWN_VULNERABILITY
 def test_item_detail_requires_basic_access() -> None:
     item_detail = next(
         node
@@ -106,29 +106,78 @@ def test_item_detail_requires_basic_access() -> None:
     assert "markettracker.basic_access" in body
 
 
-@KNOWN_VULNERABILITY
+@pytest.mark.parametrize(
+    "view_name",
+    [
+        "create_delivery",
+        "create_contract_delivery",
+        "delete_trackeditem",
+        "tracked_contract_delete",
+        "tracked_contract_edit",
+    ],
+)
+def test_location_sensitive_objects_are_scoped_to_selected_location(view_name: str) -> None:
+    source = ast.unparse(_function(VIEWS, view_name))
+    assert "get_selected_location(request)" in source
+    assert "location=loc" in source or "by_location__location=loc" in source
+
+
 def test_urls_do_not_dispatch_background_tasks_from_an_inline_lambda() -> None:
     assert not any(isinstance(node, ast.Lambda) for node in ast.walk(_tree(URLS)))
 
 
-@KNOWN_VULNERABILITY
+def test_web_refresh_enqueues_are_rate_limited() -> None:
+    helper = ast.unparse(_function(VIEWS, "_enqueue_refresh_once"))
+    assert "cache.add" in helper
+    assert "timeout=REFRESH_ENQUEUE_TTL" in helper
+
+
+def test_delivery_actions_are_rendered_as_csrf_protected_forms() -> None:
+    template = (
+        ROOT / "markettracker" / "templates" / "markettracker" / "admin_deliveries.html"
+    ).read_text(encoding="utf-8")
+    for action in (
+        "delete_delivery",
+        "finish_delivery",
+        "delete_contract_delivery",
+        "finish_contract_delivery",
+    ):
+        assert f"action=\"{{% url 'markettracker:{action}'" in template
+    assert template.count("{% csrf_token %}") >= 4
+
+
 def test_webhook_failures_do_not_persist_or_log_the_secret_url() -> None:
     source = DISCORD.read_text(encoding="utf-8")
     assert '"url": url' not in source
     assert "Discord send failed for %s\", url" not in source
+    assert "resp.text" not in source
+    assert "allow_redirects=False" in source
 
 
-@KNOWN_VULNERABILITY
-def test_discord_webhook_targets_use_an_allowlist() -> None:
-    source = ast.get_source_segment(
-        DISCORD.read_text(encoding="utf-8"),
-        _function(DISCORD, "_iter_webhook_urls"),
-    ) or ""
-    assert "urlparse" in source
-    assert "discord.com" in source
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://discord.com/api/webhooks/123/token-value",
+        "https://example.com/api/webhooks/123/token-value",
+        "https://discord.com.evil.example/api/webhooks/123/token-value",
+        "https://user@discord.com/api/webhooks/123/token-value",
+        "https://discord.com:8443/api/webhooks/123/token-value",
+        "https://discord.com/api/webhooks/123/token-value?wait=true",
+        "https://discord.com/api/other/123/token-value",
+    ],
+)
+def test_discord_webhook_targets_use_an_allowlist(url: str) -> None:
+    assert not is_allowed_discord_webhook_url(url)
 
 
-@KNOWN_VULNERABILITY
+def test_official_discord_webhook_target_is_allowed_and_redacted() -> None:
+    token = "a-secret-token-value"
+    url = f"https://discord.com/api/webhooks/123456789/{token}"
+    assert is_allowed_discord_webhook_url(url)
+    assert token not in redact_discord_webhook_url(url)
+    assert "123456789" in redact_discord_webhook_url(url)
+
+
 def test_discord_webhook_string_representation_masks_the_token() -> None:
     model = next(
         node
@@ -173,7 +222,7 @@ def test_no_hardcoded_live_webhook_or_private_key() -> None:
         for path in ROOT.rglob("*")
         if path.is_file()
         and path.suffix in {".py", ".html", ".js", ".md", ".toml"}
-        and ".venv" not in path.parts
+        and not any(part.startswith(".venv") for part in path.parts)
         and "dist" not in path.parts
     )
     patterns = [
@@ -181,3 +230,48 @@ def test_no_hardcoded_live_webhook_or_private_key() -> None:
         r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----",
     ]
     assert not any(re.search(pattern, source) for pattern in patterns)
+
+
+def test_authenticated_templates_do_not_load_script_or_css_cdns() -> None:
+    templates = "\n".join(
+        path.read_text(encoding="utf-8")
+        for path in (ROOT / "markettracker" / "templates").rglob("*.html")
+    )
+    for cdn in ("cdn.jsdelivr.net", "unpkg.com", "cdnjs.cloudflare.com"):
+        assert cdn not in templates
+
+
+@pytest.mark.parametrize(
+    ("filename", "expected_sha256"),
+    [
+        (
+            "select2-4.0.13.min.css",
+            "15d6ad4dfdb43d0affad683e70029f97a8f8fc8637a28845009ee0542dccdf81",
+        ),
+        (
+            "select2-4.0.13.min.js",
+            "00501810e93307a8882a74d864e7547fd1458deea539361dc1124ac133799a4b",
+        ),
+    ],
+)
+def test_vendored_frontend_assets_match_reviewed_hashes(
+    filename: str, expected_sha256: str
+) -> None:
+    assert hashlib.sha256((VENDOR / filename).read_bytes()).hexdigest() == expected_sha256
+
+
+def test_operational_task_logs_have_automatic_retention() -> None:
+    source = (ROOT / "markettracker" / "utils.py").read_text(encoding="utf-8")
+    assert "MARKETTRACKER_TASK_LOG_RETENTION_DAYS" in source
+    assert "MTTaskLog.objects.filter(created__lt=cutoff).delete()" in source
+    assert "cache.add" in source
+
+
+def test_upgrade_migration_purges_historical_discord_logs() -> None:
+    migration = (
+        ROOT
+        / "markettracker"
+        / "migrations"
+        / "0016_purge_discord_webhook_logs.py"
+    ).read_text(encoding="utf-8")
+    assert 'filter(source="discord").delete()' in migration

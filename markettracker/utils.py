@@ -1,94 +1,53 @@
+import json
 import logging
 import socket
-import time
 import uuid
-import json
-import requests
+from datetime import timedelta
 
 from celery import current_task
 from django.conf import settings
+from django.contrib.auth.models import Group
 from django.core.cache import cache
 from django.utils import timezone as _tz
 from django.utils.dateparse import parse_datetime
 from esi.errors import TokenInvalidError
+from esi.exceptions import HTTPClientError
 from esi.models import Token
 from eveuniverse.models import EveRegion
-from requests.exceptions import HTTPError, RequestException
-
-from allianceauth.groupmanagement.models import Group
-from allianceauth.services.modules.discord.models import DiscordUser
+from requests.exceptions import HTTPError
 
 from .models import (
     ContractSnapshot,
+    MarketCharacter,
     MTTaskLog,
-    TrackedLocation,
     TrackedContract,
+    TrackedLocation,
+)
+from .providers import (
+    get_character_contract_items,
+    get_structure_info,
+    post_universe_names,
 )
 
 logger = logging.getLogger(__name__)
 
-ESI_BASE_URL = "https://esi.evetech.net/latest"
 
-
-# --- Global ESI cooldown (shared via Redis cache) ---
-# When we hit 420/429 we set a short cooldown to prevent a retry storm.
-MT_ESI_COOLDOWN_KEY = "mt-esi-cooldown-until"
-
-def esi_set_cooldown(seconds: int) -> None:
+def _aa_discord_role_for_group(group: Group):
+    """Resolve an AA Discord role without making the Discord app mandatory."""
     try:
-        seconds = int(seconds or 0)
-    except Exception:
-        seconds = 0
-    if seconds <= 0:
-        seconds = 1
-    cache.set(MT_ESI_COOLDOWN_KEY, 1, timeout=min(seconds, 600))
+        from allianceauth.services.modules.discord.api import group_to_role
 
-
-def esi_cooldown_active() -> bool:
-    return bool(cache.get(MT_ESI_COOLDOWN_KEY, False))
+        return group_to_role(group)
+    except (ImportError, RuntimeError):
+        logger.debug("Alliance Auth's Discord service is not enabled")
+    except HTTPError:
+        logger.exception("Alliance Auth's Discord service rejected the role lookup")
+    return None
 
 
 def _chunked(seq, size: int):
-    for i in range(0, len(seq), size):
-        yield seq[i:i + size]
-
-
-def esi_retry_wait_seconds(headers: dict) -> int:
-    """Compute wait seconds from ESI headers (Retry-After / X-Esi-Error-Limit-Reset)."""
-    try:
-        ra = headers.get("Retry-After")
-        if ra:
-            return max(1, int(float(ra)))
-    except Exception:
-        pass
-    try:
-        reset = headers.get("X-Esi-Error-Limit-Reset")
-        if reset:
-            return max(1, int(float(reset))) + 1
-    except Exception:
-        pass
-    return 10
-
-
-
-def _fetch_character_orders(character_id, access_token, config):
-    url = f"{ESI_BASE_URL}/characters/{character_id}/orders/"
-
-    data, meta = esi_get_json(
-        url,
-        access_token=access_token,
-        params=None,
-        timeout=20,
-        source="items",
-        event="esi_character_orders_error",
-        ctx={"character_id": character_id, "url": url},
-        max_attempts=4,
-    )
-    orders = data or []
-
-    if config.scope == "region":
-        return [o for o in orders if o.get("region_id") == config.location_id]
-    return [o for o in orders if o.get("location_id") == config.location_id]
+    for index in range(0, len(seq), size):
+        yield seq[index : index + size]
 
 
 def _task_suffix() -> str:
@@ -110,135 +69,32 @@ def _ctx(extra: dict | None = None) -> dict:
     return base
 
 
+def _cleanup_expired_task_logs() -> None:
+    try:
+        retention_days = int(getattr(settings, "MARKETTRACKER_TASK_LOG_RETENTION_DAYS", 14))
+    except (TypeError, ValueError):
+        retention_days = 14
+    retention_days = max(1, retention_days)
+
+    try:
+        if cache.add("markettracker:task-log-retention", "running", timeout=86400):
+            cutoff = _tz.now() - timedelta(days=retention_days)
+            MTTaskLog.objects.filter(created__lt=cutoff).delete()
+    except Exception:
+        logger.exception("Failed to enforce MTTaskLog retention")
+        try:
+            cache.delete("markettracker:task-log-retention")
+        except Exception:
+            logger.exception("Failed to release MTTaskLog retention lock")
+
+
 def db_log(level: str = "INFO", source: str = "contracts", event: str = "run", message: str = "", data: dict | None = None):
     try:
         MTTaskLog.objects.create(level=level, source=source, event=event, message=message or "", data=data or {})
     except Exception:
         logger.exception("Failed to write MTTaskLog")
-
-
-def esi_headers(access_token: str | None) -> dict:
-    h = {"Accept": "application/json"}
-    if access_token:
-        h["Authorization"] = f"Bearer {access_token}"
-    return h
-
-
-
-def esi_get_json(
-    url: str,
-    *,
-    access_token: str | None = None,
-    params: dict | None = None,
-    timeout: int = 15,
-    cache_key: str | None = None,
-    etag_key: str | None = None,
-    max_attempts: int = 3,
-    source: str = "esi",
-    event: str = "esi_error",
-    ctx: dict | None = None,
-):
-    """
-    Safe ESI GET JSON with retries + optional ETag.
-    - 304 -> returns cached payload (if present)
-    - 304 without cached payload -> retry without If-None-Match
-    Returns: (data_or_none, meta)
-    meta: status_code, headers, attempts, error
-    """
-    params = params or {}
-    meta = {"status_code": None, "headers": {}, "attempts": 0, "error": None}
-
-    cached_payload = cache.get(cache_key) if cache_key else None
-    etag = cache.get(etag_key) if etag_key else None
-
-    headers = esi_headers(access_token)
-    if etag:
-        headers["If-None-Match"] = etag
-
-    backoff = 1.0
-    last_exc = None
-
-    for attempt in range(1, max_attempts + 1):
-        meta["attempts"] = attempt
-        try:
-            resp = requests.get(url, headers=headers, params=params, timeout=timeout)
-            meta["status_code"] = resp.status_code
-            meta["headers"] = dict(resp.headers or {})
-
-            # --- throttle / temporary errors ---
-            if resp.status_code in (420, 429, 503):
-                # best-effort wait
-                retry_after = resp.headers.get("Retry-After")
-                reset = resp.headers.get("X-Esi-Error-Limit-Reset")
-                wait_s = None
-                if retry_after:
-                    try:
-                        wait_s = float(retry_after)
-                    except ValueError:
-                        pass
-                if wait_s is None and reset:
-                    try:
-                        wait_s = float(reset)
-                    except ValueError:
-                        pass
-                if wait_s is None:
-                    wait_s = backoff
-
-                if attempt == max_attempts:
-                    try:
-                        db_log(level="ERROR", source=source, event=event,
-                               message=f"{resp.status_code} for {resp.url}",
-                               data=_ctx({**(ctx or {}), "attempts": attempt, "wait_s": wait_s}))
-                    except Exception:
-                        pass
-                    return None, meta
-
-                time.sleep(min(wait_s, 30.0))
-                backoff = min(backoff * 2.0, 30.0)
-                continue
-
-            # --- ETag: 304 means "use cached" ---
-            if resp.status_code == 304:
-                if cached_payload is not None:
-                    return cached_payload, meta
-
-                # 304 but no cache -> retry without ETag once (same attempt)
-                headers.pop("If-None-Match", None)
-                resp = requests.get(url, headers=headers, params=params, timeout=timeout)
-                meta["status_code"] = resp.status_code
-                meta["headers"] = dict(resp.headers or {})
-
-            resp.raise_for_status()
-            data = resp.json()
-
-            # store payload + ETag (optional)
-            if cache_key:
-                cache.set(cache_key, data, 3600)
-            if etag_key:
-                new_etag = resp.headers.get("ETag")
-                if new_etag:
-                    cache.set(etag_key, new_etag, 3600)
-
-            return data, meta
-
-        except Exception as e:
-            last_exc = e
-            meta["error"] = str(e)
-
-            if attempt == max_attempts:
-                try:
-                    db_log(level="ERROR", source=source, event=event,
-                           message=str(e),
-                           data=_ctx({**(ctx or {}), "attempts": attempt}))
-                except Exception:
-                    pass
-                return None, meta
-
-            time.sleep(min(backoff, 10.0))
-            backoff = min(backoff * 2.0, 10.0)
-
-    # shouldn't happen, but keep it safe
-    return None, meta
+        return
+    _cleanup_expired_task_logs()
 
 
 def _parse_esi_datetime(v):
@@ -321,21 +177,12 @@ def location_display_name(loc) -> str:
         if cached:
             return cached
 
-        url = f"{ESI_BASE_URL}/universe/names/"
-        # public endpoint; POST with json list
-        resp = requests.post(
-            url,
-            params={"datasource": "tranquility"},
-            json=[loc_id],
-            timeout=10,
-        )
-        if resp.status_code == 200:
-            data = resp.json() or []
-            if data and isinstance(data, list):
-                name = data[0].get("name")
-                if name:
-                    cache.set(cache_key, name, 86400)  # 24h
-                    return name
+        data = post_universe_names([loc_id])
+        if data and isinstance(data, list):
+            name = data[0].get("name")
+            if name:
+                cache.set(cache_key, name, 86400)  # 24h
+                return name
     except Exception:
         pass
 
@@ -347,10 +194,6 @@ def location_display_name(loc) -> str:
             if cached:
                 return cached
 
-            # Import here to avoid circular imports
-            from .models import MarketCharacter
-            from esi.errors import TokenInvalidError
-
             mc = (
                 MarketCharacter.objects.filter(type="admin")
                 .select_related("token")
@@ -358,26 +201,15 @@ def location_display_name(loc) -> str:
             )
             if mc and mc.token:
                 try:
-                    access = mc.token.valid_access_token()
+                    data = get_structure_info(loc_id, mc.token)
                 except TokenInvalidError:
-                    access = None
+                    data = None
 
-                if access:
-                    url = f"{ESI_BASE_URL}/universe/structures/{loc_id}/"
-                    data, _meta = esi_get_json(
-                        url,
-                        access_token=access,
-                        timeout=15,
-                        source="esi",
-                        event="esi_structure_name_error",
-                        ctx={"structure_id": loc_id},
-                        max_attempts=2,
-                    )
-                    if data and isinstance(data, dict):
-                        nm = (data.get("name") or "").strip()
-                        if nm:
-                            cache.set(cache_key, nm, 86400)  # 24h
-                            return nm
+                if data and isinstance(data, dict):
+                    name = (data.get("name") or "").strip()
+                    if name:
+                        cache.set(cache_key, name, 86400)  # 24h
+                        return name
     except Exception:
         pass
 
@@ -426,11 +258,11 @@ def fetch_contract_items(contract_obj, _access_token_unused, char_id):
         )
         return []
 
-    url = f"{ESI_BASE_URL}/characters/{char_id}/contracts/{contract_obj.contract_id}/items/"
-
     for token in tokens:
         try:
-            access_token = token.valid_access_token()
+            items = get_character_contract_items(
+                char_id, contract_obj.contract_id, token
+            )
         except TokenInvalidError:
             logger.warning(
                 "[Contracts] Invalid token for character %s (token id=%s)",
@@ -438,60 +270,43 @@ def fetch_contract_items(contract_obj, _access_token_unused, char_id):
                 token.id,
             )
             continue
-        except Exception as e:
-            logger.exception(
-                "[Contracts] Token refresh failed for character %s (token id=%s): %s",
-                char_id,
-                token.id,
-                e,
-            )
-            continue
-
-        headers = {
-            "User-Agent": getattr(settings, "ESI_USER_AGENT", "MarketTracker/1.0"),
-            "Authorization": f"Bearer {access_token}",
-        }
-
-        try:
-            resp = requests.get(
-                url,
-                headers=headers,
-                params={"datasource": "tranquility"},
-                timeout=10,
-            )
-
-            # 403 = this char/token can't access items for that contract; not retryable
-            if resp.status_code == 403:
+        except HTTPClientError as exc:
+            if exc.status_code == 403:
                 logger.info(
                     "[Contracts] Items not accessible for contract %s with char %s (403).",
                     contract_obj.contract_id,
                     char_id,
                 )
                 return []
-
-            resp.raise_for_status()
-
-            items = resp.json() or []
-            contract_obj.items = items
-            contract_obj.save(update_fields=["items"])
-
-            db_log(source="contracts", event="items_saved", data={
-                "contract_id": contract_obj.contract_id,
-                "owner_character_id": char_id,
-            })
-
-
-            return items
-
-        except Exception as e:
-            logger.error(
-                "[Contracts] Failed to load items for contract %s with char %s (token id=%s): %s",
+            if exc.status_code == 404:
+                return []
+            logger.warning(
+                "[Contracts] ESI rejected contract %s items for char %s: HTTP %s",
                 contract_obj.contract_id,
+                char_id,
+                exc.status_code,
+            )
+            continue
+        except Exception as e:
+            logger.exception(
+                "[Contracts] Failed to load items for character %s (token id=%s): %s",
                 char_id,
                 token.id,
                 e,
             )
             continue
+
+        contract_obj.items = items
+        contract_obj.save(update_fields=["items"])
+        db_log(
+            source="contracts",
+            event="items_saved",
+            data={
+                "contract_id": contract_obj.contract_id,
+                "owner_character_id": char_id,
+            },
+        )
+        return items
 
     logger.warning(
         "[Contracts] Could not fetch items for contract %s (char %s) with any token",
@@ -623,13 +438,10 @@ def resolve_ping_target_from_config(config) -> str:
     Pings for discord messages
     """
     if config.discord_ping_group:
-        try:
-            mapping = DiscordUser.objects.group_to_role(group=config.discord_ping_group)
-            role_id = mapping.get("id") if mapping else None
-            if role_id:
-                return f"<@&{role_id}>"
-        except HTTPError:
-            logger.exception("[MarketTracker] Discord service error when resolving group role")
+        role = _aa_discord_role_for_group(config.discord_ping_group)
+        role_id = role.id if role else None
+        if role_id:
+            return f"<@&{role_id}>"
 
         return f"@{config.discord_ping_group.name}"
 
@@ -653,15 +465,10 @@ def resolve_ping_target(ping_value: str) -> str:
         except Group.DoesNotExist:
             return f"@{group_name}"
 
-        try:
-            discord_group_info = DiscordUser.objects.group_to_role(group=group)
-        except HTTPError:
-            return f"@{group_name}"
-        except Exception:
-            return f"@{group_name}"
+        discord_role = _aa_discord_role_for_group(group)
 
-        if discord_group_info and "id" in discord_group_info:
-            return f"<@&{discord_group_info['id']}>"
+        if discord_role:
+            return f"<@&{discord_role.id}>"
         return f"@{group_name}"
 
     return ""
@@ -703,4 +510,3 @@ def get_selected_location(request):
         return loc
 
     return TrackedLocation.objects.filter(is_active=True).first()
-

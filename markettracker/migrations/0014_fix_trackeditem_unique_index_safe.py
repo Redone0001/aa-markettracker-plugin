@@ -56,6 +56,9 @@ def _drop_indexes_like(cursor, like_pattern: str):
 
 
 def forwards(apps, schema_editor):
+    if schema_editor.connection.vendor != "mysql":
+        return
+
     with schema_editor.connection.cursor() as cursor:
         # 1) Drop the known bad index name if it exists
         _drop_index_if_exists(cursor, BAD_NAME_EXACT)
@@ -71,6 +74,9 @@ def forwards(apps, schema_editor):
 
 
 def backwards(apps, schema_editor):
+    if schema_editor.connection.vendor != "mysql":
+        return
+
     with schema_editor.connection.cursor() as cursor:
         # reverse just removes the new index (we do NOT recreate old broken one)
         _drop_index_if_exists(cursor, NEW_INDEX)

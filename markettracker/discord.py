@@ -3,9 +3,11 @@ import logging
 import requests
 from django.conf import settings
 from django.utils import timezone
+from requests.exceptions import RequestException
 
 from .models import DiscordMessage, DiscordWebhook
-from .utils import resolve_ping_target, db_log, _chunked
+from .security import is_allowed_discord_webhook_url, redact_discord_webhook_url
+from .utils import _chunked, db_log, resolve_ping_target
 
 logger = logging.getLogger(__name__)
 
@@ -13,8 +15,15 @@ logger = logging.getLogger(__name__)
 def _iter_webhook_urls():
     for wh in DiscordWebhook.objects.all():
         url = (wh.url or "").strip()
-        if url:
-            yield url
+        if not url:
+            continue
+        if not is_allowed_discord_webhook_url(url):
+            logger.error(
+                "[MarketTracker] Refusing invalid Discord webhook configuration id=%s",
+                wh.pk,
+            )
+            continue
+        yield url
 
 
 def _get_config():
@@ -66,31 +75,45 @@ def _post_embeds(embeds: list[dict], ping: str = ""):
     headers = {"User-Agent": getattr(settings, "ESI_USER_AGENT", "MarketTracker/1.0")}
 
     for url in _iter_webhook_urls():
+        webhook_label = redact_discord_webhook_url(url)
         try:
-            resp = requests.post(url, json=payload, headers=headers, timeout=8)
-            if resp.status_code >= 400:
+            resp = requests.post(
+                url,
+                json=payload,
+                headers=headers,
+                timeout=8,
+                allow_redirects=False,
+            )
+            if resp.status_code >= 300:
                 db_log(
                     level="ERROR",
                     source="discord",
                     event="webhook_http_error",
                     message=f"Discord webhook failed: {resp.status_code}",
                     data={
-                        "url": url,
+                        "webhook": webhook_label,
                         "status": resp.status_code,
-                        "body": (resp.text or "")[:1000],
                         "embeds_count": len(payload["embeds"]),
                     },
                 )
-                resp.raise_for_status()
-        except Exception as e:
+                logger.error(
+                    "[MarketTracker] Discord webhook returned HTTP %s for %s",
+                    resp.status_code,
+                    webhook_label,
+                )
+        except RequestException as exc:
             db_log(
                 level="ERROR",
                 source="discord",
                 event="webhook_exception",
-                message=str(e),
-                data={"url": url},
+                message=f"Discord webhook request failed: {type(exc).__name__}",
+                data={"webhook": webhook_label},
             )
-            logger.exception("[MarketTracker] Discord send failed for %s", url)
+            logger.error(
+                "[MarketTracker] Discord send failed for %s (%s)",
+                webhook_label,
+                type(exc).__name__,
+            )
 
 
 def send_items_alert(changed_items, location_name: str):

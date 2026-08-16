@@ -1,9 +1,7 @@
-from django.shortcuts import redirect
 from django.urls import path
 
 from markettracker import views
 
-from .tasks import refresh_contracts
 from .views import ItemPriceDetailView
 
 app_name = "markettracker"
@@ -40,7 +38,11 @@ urlpatterns = [
 
         # Contracts - testowy panel
     path("contracts/", views.contracts_list_view, name="contracts_list"),
-    path("contracts/refresh/", lambda r: (refresh_contracts.delay(), redirect("markettracker:contracts_list"))[1], name="refresh_contracts"),
+    path(
+        "contracts/refresh/",
+        views.refresh_contracts_data,
+        name="refresh_contracts",
+    ),
 
     path("diagnostics/", views.diagnostics_view, name="diagnostics"),
 

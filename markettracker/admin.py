@@ -1,24 +1,24 @@
-from allianceauth.groupmanagement.models import Group
 from django import forms
 from django.contrib import admin
+from django.contrib.auth.models import Group
 from django.http import HttpResponseRedirect
 from django.urls import reverse
 from django.utils.translation import gettext_lazy as _
 
-from .models import (
-    DiscordMessage,
-    DiscordWebhook,
-    MarketTrackingConfig,
-    TrackedLocation
-)
+from .models import DiscordMessage, DiscordWebhook, MarketTrackingConfig, TrackedLocation
+from .security import redact_discord_webhook_url
 
 # ========= DiscordWebhook =========
 
 @admin.register(DiscordWebhook)
 class DiscordWebhookAdmin(admin.ModelAdmin):
-    list_display = ("name", "url")
-    search_fields = ("name", "url")
+    list_display = ("name", "webhook_endpoint")
+    search_fields = ("name",)
     list_per_page = 25
+
+    @admin.display(description=_("Webhook endpoint"))
+    def webhook_endpoint(self, obj):
+        return redact_discord_webhook_url(obj.url)
 
 
 # ========= DiscordMessage =========

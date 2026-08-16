@@ -21,6 +21,7 @@ class MarketTrackerMenuItem(MenuItemHook):
             "fas fa-cube fa-fw",
             "markettracker:list_items",
             navactive=["markettracker:"],
+            order=1100,
         )
 
     def render(self, request):

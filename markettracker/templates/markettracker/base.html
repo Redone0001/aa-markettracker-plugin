@@ -1,6 +1,7 @@
 {% extends 'allianceauth/base-bs5.html' %}
 {% load i18n %}
 {% load navactive %}
+{% load static %}
 
 {% block page_title %}
     {% trans "Market Tracker Plugin" %}
@@ -66,11 +67,53 @@
     </div>
 {% endblock %}
 
+{% block extra_css %}
+{{ block.super }}
+<link href="{% static 'markettracker/vendor/select2-4.0.13.min.css' %}" rel="stylesheet">
+<style>
+.table-responsive.table-scroll-1 {
+    max-height: 30vh;
+    overflow-y: auto;
+}
+.table-responsive.table-scroll-2 {
+    max-height: 80vh;
+    overflow-y: auto;
+}
+.table-responsive.table-scroll-1 thead th,
+.table-responsive.table-scroll-2 thead th {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    background-color: var(--bs-card-bg);
+}
+.select2-container--default .select2-selection--single {
+    background-color: #fff !important;
+    color: #000 !important;
+}
+.select2-container--default .select2-results__option {
+    color: #000 !important;
+}
+.card-header .btn.force-btn {
+  --bs-btn-bg: var(--bs-primary);
+  --bs-btn-border-color: var(--bs-primary);
+  --bs-btn-color: #fff;
+}
+.card-header .btn.force-btn.btn-warning {
+  --bs-btn-bg: var(--bs-warning);
+  --bs-btn-border-color: var(--bs-warning);
+  --bs-btn-color: #000;
+}
+.card-header .btn.force-btn.btn-secondary {
+  --bs-btn-bg: var(--bs-secondary);
+  --bs-btn-border-color: var(--bs-secondary);
+  --bs-btn-color: #fff;
+}
+</style>
+{% endblock %}
+
 {% block extra_javascript %}
     {{ block.super }}
-    <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet">
-    <script src="https://cdn.jsdelivr.net/npm/jquery@3/dist/jquery.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+    <script src="{% static 'markettracker/vendor/select2-4.0.13.min.js' %}"></script>
 
     <script>
     $(function() {
@@ -187,46 +230,4 @@ document.querySelectorAll('.btn-deliver-contract').forEach(function(btn){
   });
 })();
 </script>
-{% endblock %}
-
-{% block extra_css %}
-<style>
-.table-responsive.table-scroll-1 {
-    max-height: 30vh;
-    overflow-y: auto;
-}
-.table-responsive.table-scroll-2 {
-    max-height: 80vh;
-    overflow-y: auto;
-}
-.table-responsive.table-scroll-1 thead th,
-.table-responsive.table-scroll-2 thead th {
-    position: sticky;
-    top: 0;
-    z-index: 5;
-    background-color: var(--bs-card-bg);
-}
-.select2-container--default .select2-selection--single {
-    background-color: #fff !important;
-    color: #000 !important;
-}
-.select2-container--default .select2-results__option {
-    color: #000 !important;
-}
-.card-header .btn.force-btn {
-  --bs-btn-bg: var(--bs-primary);
-  --bs-btn-border-color: var(--bs-primary);
-  --bs-btn-color: #fff;
-}
-.card-header .btn.force-btn.btn-warning {
-  --bs-btn-bg: var(--bs-warning);
-  --bs-btn-border-color: var(--bs-warning);
-  --bs-btn-color: #000;
-}
-.card-header .btn.force-btn.btn-secondary {
-  --bs-btn-bg: var(--bs-secondary);
-  --bs-btn-border-color: var(--bs-secondary);
-  --bs-btn-color: #fff;
-}
-</style>
 {% endblock %}

@@ -3,11 +3,11 @@ import logging
 from collections import OrderedDict
 from datetime import date, timedelta
 
-from allianceauth.authentication.models import CharacterOwnership
-from allianceauth.eveonline.models import EveCharacter
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required, permission_required
+from django.contrib.auth.mixins import LoginRequiredMixin, PermissionRequiredMixin
 from django.core.cache import cache
+from django.core.exceptions import PermissionDenied
 from django.db.models import Count, Min, Q, Sum
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -19,6 +19,7 @@ from django.views.generic import TemplateView
 from esi.decorators import token_required
 from eveuniverse.models import EveType
 
+from .auth import ownership_for_token
 from .esi import get_best_prices, get_market_history, get_type_name
 from .forms import (
     ContractDeliveryQuantityForm,
@@ -36,9 +37,9 @@ from .models import (
     MarketTrackingConfig,
     MTTaskLog,
     TrackedContract,
+    TrackedContractLocation,
     TrackedItem,
     TrackedLocation,
-    TrackedContractLocation,
 )
 from .tasks import fetch_market_data_auto, refresh_contracts
 from .utils import contract_matches, get_selected_location, location_display_name
@@ -56,9 +57,24 @@ THE_FORGE = 10000002  # Jita
 DOMAIN = 10000043     # Amarr
 EXCLUDED_GROUP_IDS = [6, 1, 14]
 EXCLUDED_CATEGORIES = ["Blueprint", "SKINs"]
+REFRESH_ENQUEUE_TTL = 60
+
+
+def _enqueue_refresh_once(task, task_name: str) -> bool:
+    """Enqueue a refresh at most once per TTL across all web workers."""
+    enqueue_key = f"markettracker:enqueue:{task_name}"
+    if not cache.add(enqueue_key, "queued", timeout=REFRESH_ENQUEUE_TTL):
+        return False
+    try:
+        task.delay()
+    except Exception:
+        cache.delete(enqueue_key)
+        raise
+    return True
 
 
 @login_required
+@permission_required("markettracker.can_manage_stocks", raise_exception=True)
 def fitting_search(request):
     q = (request.GET.get("q") or "").strip()
     page = int(request.GET.get("page") or 1)
@@ -82,6 +98,7 @@ def fitting_search(request):
 
 
 @login_required
+@permission_required("markettracker.can_manage_stocks", raise_exception=True)
 def item_search(request):
     q = (request.GET.get("q") or "").strip()
     page = int(request.GET.get("page") or 1)
@@ -129,8 +146,10 @@ def item_search(request):
                          "pagination": {"more": start + page_size < total}})
 
 
-class ItemPriceDetailView(TemplateView):
+class ItemPriceDetailView(LoginRequiredMixin, PermissionRequiredMixin, TemplateView):
     template_name = "markettracker/item_detail.html"
+    permission_required = "markettracker.basic_access"
+    raise_exception = True
 
     def get_context_data(self, type_id: int, **kwargs):
         ctx = super().get_context_data(**kwargs)
@@ -316,23 +335,16 @@ class ItemPriceDetailView(TemplateView):
 
 
 @login_required
+@permission_required("markettracker.basic_access", raise_exception=True)
 @token_required(scopes=[
     "esi-contracts.read_character_contracts.v1",
-    "esi-assets.read_assets.v1",
     "esi-markets.read_character_orders.v1"
 ])
 def character_login_list(request, token):
     if MarketCharacter.objects.filter(token=token).exists():
         messages.error(request, _t("This character is already linked in MarketTracker."))
         return redirect("markettracker:list_items")
-    eve_character, _ = EveCharacter.objects.get_or_create(
-        character_id=token.character_id,
-        defaults={"character_name": token.character_name},
-    )
-    ownership, _ = CharacterOwnership.objects.get_or_create(
-        character=eve_character,
-        user=request.user,
-    )
+    ownership = ownership_for_token(token=token, user=request.user)
     MarketCharacter.objects.create(
         character=ownership,
         token=token,
@@ -344,22 +356,15 @@ def character_login_list(request, token):
 
 
 @login_required
+@permission_required("markettracker.can_manage_stocks", raise_exception=True)
 @token_required(scopes=[
     "esi-markets.structure_markets.v1",
     "esi-universe.read_structures.v1",
     "esi-contracts.read_character_contracts.v1",
-    "esi-assets.read_assets.v1",
     "esi-markets.read_character_orders.v1"
 ])
 def character_login_manage(request, token):
-    eve_character, _ = EveCharacter.objects.get_or_create(
-        character_id=token.character_id,
-        defaults={"character_name": token.character_name},
-    )
-    ownership, _ = CharacterOwnership.objects.get_or_create(
-        character=eve_character,
-        user=request.user,
-    )
+    ownership = ownership_for_token(token=token, user=request.user)
 
     mc, _ = MarketCharacter.objects.update_or_create(
         character=ownership,
@@ -372,6 +377,7 @@ def character_login_manage(request, token):
 
 
 @login_required
+@permission_required("markettracker.basic_access", raise_exception=True)
 def list_items_view(request):
     cfg = MarketTrackingConfig.objects.first()
     yellow_threshold = int(getattr(cfg, "yellow_threshold", 50) or 50)
@@ -464,8 +470,8 @@ def list_items_view(request):
         items_data = [it for it in items_data if it["status"] == "YELLOW"]
 
     locations = list(TrackedLocation.objects.filter(is_active=True).order_by("-is_default", "name"))
-    for l in locations:
-        l.display_name = location_display_name(l)
+    for location in locations:
+        location.display_name = location_display_name(location)
 
     return render(
         request,
@@ -484,7 +490,7 @@ def list_items_view(request):
 
 
 @login_required
-@permission_required("markettracker.basic_access", raise_exception=True)
+@permission_required("markettracker.can_manage_stocks", raise_exception=True)
 def manage_stock_view(request):
     loc = get_selected_location(request)
     if not loc:
@@ -502,13 +508,17 @@ def manage_stock_view(request):
 
     if request.method == "POST":
         if "refresh" in request.POST:
-            fetch_market_data_auto.delay()
-            messages.success(request, _t("Market data refresh started."))
+            if _enqueue_refresh_once(fetch_market_data_auto, "market-data"):
+                messages.success(request, _t("Market data refresh started."))
+            else:
+                messages.warning(request, _t("A market data refresh was already queued."))
             return redirect(f"{reverse('markettracker:manage_stock')}?loc={loc.id}")
 
         if "refresh_contracts" in request.POST:
-            refresh_contracts.delay()
-            messages.success(request, _t("Contracts refresh started."))
+            if _enqueue_refresh_once(refresh_contracts, "contracts"):
+                messages.success(request, _t("Contracts refresh started."))
+            else:
+                messages.warning(request, _t("A contracts refresh was already queued."))
             return redirect(f"{reverse('markettracker:manage_stock')}?loc={loc.id}")
 
         # ------- Items -------
@@ -608,8 +618,8 @@ def manage_stock_view(request):
             or MarketCharacter.objects.select_related("character", "character__character").first()
         )
         locations = list(TrackedLocation.objects.filter(is_active=True).order_by("-is_default", "name"))
-        for l in locations:
-            l.display_name = location_display_name(l)
+        for location in locations:
+            location.display_name = location_display_name(location)
 
         return render(
             request,
@@ -671,8 +681,8 @@ def manage_stock_view(request):
     )
 
     locations = list(TrackedLocation.objects.filter(is_active=True).order_by("-is_default", "name"))
-    for l in locations:
-        l.display_name = location_display_name(l)
+    for location in locations:
+        location.display_name = location_display_name(location)
 
     return render(
         request,
@@ -695,24 +705,29 @@ def manage_stock_view(request):
 
 
 @login_required
+@permission_required("markettracker.can_manage_stocks", raise_exception=True)
+@require_POST
 def refresh_market_data(request):
     loc = get_selected_location(request)
-    fetch_market_data_auto.delay()
-    messages.success(request, _t("Market data refresh started."))
+    if _enqueue_refresh_once(fetch_market_data_auto, "market-data"):
+        messages.success(request, _t("Market data refresh started."))
+    else:
+        messages.warning(request, _t("A market data refresh was already queued."))
     if loc:
         return redirect(f"{reverse('markettracker:manage_stock')}?loc={loc.id}")
     return redirect("markettracker:manage_stock")
 
 
 @login_required
-@permission_required("markettracker.basic_access", raise_exception=True)
+@permission_required("markettracker.can_manage_stocks", raise_exception=True)
 def contract_errors_view(request):
     errors = ContractError.objects.filter(is_resolved=False).order_by("-created_at")
     return render(request, "markettracker/contract_errors.html", {"errors": errors})
 
 
 @login_required
-@permission_required("markettracker.basic_access", raise_exception=True)
+@permission_required("markettracker.can_manage_deliveries", raise_exception=True)
+@require_POST
 def delete_contract_delivery(request, pk):
     cd = get_object_or_404(ContractDelivery, pk=pk)
     cd.delete()
@@ -721,7 +736,8 @@ def delete_contract_delivery(request, pk):
 
 
 @login_required
-@permission_required("markettracker.basic_access", raise_exception=True)
+@permission_required("markettracker.can_manage_deliveries", raise_exception=True)
+@require_POST
 def finish_contract_delivery(request, pk):
     cd = get_object_or_404(ContractDelivery, pk=pk)
     cd.delivered_quantity = cd.declared_quantity
@@ -732,11 +748,11 @@ def finish_contract_delivery(request, pk):
 
 
 @login_required
-@permission_required("markettracker.basic_access", raise_exception=True)
+@permission_required("markettracker.can_manage_stocks", raise_exception=True)
 @require_POST
 def delete_trackeditem(request, pk):
     loc = get_selected_location(request)
-    item = get_object_or_404(TrackedItem, pk=pk)
+    item = get_object_or_404(TrackedItem, pk=pk, location=loc)
     item.delete()
     messages.success(request, _t("Item deleted successfully."))
     if loc:
@@ -745,22 +761,35 @@ def delete_trackeditem(request, pk):
 
 
 @login_required
-@permission_required("markettracker.basic_access", raise_exception=True)
+@permission_required("markettracker.can_manage_stocks", raise_exception=True)
 @require_POST
 def tracked_contract_delete(request, pk):
     loc = get_selected_location(request)
-    tc = get_object_or_404(TrackedContract, pk=pk)
-    tc.delete()
-    messages.success(request, _t("Tracked contract deleted."))
+    tracked_location = get_object_or_404(
+        TrackedContractLocation,
+        tracked_contract_id=pk,
+        location=loc,
+    )
+    tracked_contract = tracked_location.tracked_contract
+    tracked_location.delete()
+    if not tracked_contract.by_location.exists():
+        tracked_contract.is_active = False
+        tracked_contract.save(update_fields=["is_active"])
+    messages.success(request, _t("Tracked contract removed from this location."))
     if loc:
         return redirect(f"{reverse('markettracker:manage_stock')}?loc={loc.id}")
     return redirect("markettracker:manage_stock")
 
 
 @login_required
-@permission_required("markettracker.basic_access", raise_exception=True)
+@permission_required("markettracker.can_manage_stocks", raise_exception=True)
 def tracked_contract_edit(request, pk):
     loc = get_selected_location(request)
+    get_object_or_404(
+        TrackedContractLocation,
+        tracked_contract_id=pk,
+        location=loc,
+    )
     base = reverse("markettracker:manage_stock")
     if loc:
         return redirect(f"{base}?loc={loc.id}&tc_edit={pk}")
@@ -768,8 +797,10 @@ def tracked_contract_edit(request, pk):
 
 
 @login_required
+@permission_required("markettracker.basic_access", raise_exception=True)
 def create_delivery(request, item_id):
-    tracked_item = get_object_or_404(TrackedItem, item__id=item_id)
+    loc = get_selected_location(request)
+    tracked_item = get_object_or_404(TrackedItem, item_id=item_id, location=loc)
 
     if request.method == "POST":
         form = DeliveryQuantityForm(request.POST)
@@ -787,8 +818,15 @@ def create_delivery(request, item_id):
 
 
 @login_required
+@permission_required("markettracker.basic_access", raise_exception=True)
 def create_contract_delivery(request, tc_id):
-    tc = get_object_or_404(TrackedContract, pk=tc_id)
+    loc = get_selected_location(request)
+    tc = get_object_or_404(
+        TrackedContract,
+        pk=tc_id,
+        by_location__location=loc,
+        by_location__is_active=True,
+    )
     if request.method == "POST":
         form = ContractDeliveryQuantityForm(request.POST)
         if form.is_valid():
@@ -804,6 +842,7 @@ def create_contract_delivery(request, tc_id):
 
 
 @login_required
+@permission_required("markettracker.basic_access", raise_exception=True)
 def deliveries_list_view(request):
     q = request.GET.get("q", "").strip()
     cq = request.GET.get("cq", "")
@@ -834,7 +873,7 @@ def deliveries_list_view(request):
 
 
 @login_required
-@permission_required("markettracker.basic_access", raise_exception=True)
+@permission_required("markettracker.can_manage_deliveries", raise_exception=True)
 def admin_deliveries_view(request):
     q = request.GET.get("q", "").strip()
     cq = request.GET.get("cq", "")
@@ -865,7 +904,8 @@ def admin_deliveries_view(request):
 
 
 @login_required
-@permission_required("markettracker.basic_access", raise_exception=True)
+@permission_required("markettracker.can_manage_deliveries", raise_exception=True)
+@require_POST
 def delete_delivery(request, pk):
     delivery = get_object_or_404(Delivery, pk=pk)
     delivery.delete()
@@ -874,7 +914,8 @@ def delete_delivery(request, pk):
 
 
 @login_required
-@permission_required("markettracker.basic_access", raise_exception=True)
+@permission_required("markettracker.can_manage_deliveries", raise_exception=True)
+@require_POST
 def finish_delivery(request, pk):
     delivery = get_object_or_404(Delivery, pk=pk)
     delivery.delivered_quantity = delivery.declared_quantity
@@ -885,10 +926,13 @@ def finish_delivery(request, pk):
 
 
 @login_required
-@permission_required("markettracker.basic_access", raise_exception=True)
+@permission_required("markettracker.can_manage_stocks", raise_exception=True)
+@require_POST
 def refresh_contracts_data(request):
-    refresh_contracts.delay()
-    messages.success(request, _t("Contracts refresh started."))
+    if _enqueue_refresh_once(refresh_contracts, "contracts"):
+        messages.success(request, _t("Contracts refresh started."))
+    else:
+        messages.warning(request, _t("A contracts refresh was already queued."))
     return redirect("markettracker:contracts_list")
 
 
@@ -996,8 +1040,8 @@ def contracts_list_view(request):
         rows = [r for r in rows if r["status"] == "YELLOW"]
 
     locations = list(TrackedLocation.objects.filter(is_active=True).order_by("-is_default", "name"))
-    for l in locations:
-        l.display_name = location_display_name(l)
+    for location in locations:
+        location.display_name = location_display_name(location)
 
     return render(
         request,
@@ -1017,6 +1061,9 @@ def contracts_list_view(request):
 
 @login_required
 def diagnostics_view(request):
+    if not request.user.is_superuser:
+        raise PermissionDenied
+
     since = timezone.now() - timedelta(days=2)
     since_24h = timezone.now() - timedelta(hours=24)
 
