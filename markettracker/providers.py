@@ -71,21 +71,21 @@ def get_character_contract_items(
         character_id=int(character_id),
         contract_id=int(contract_id),
         token=token,
-    ).result(force_refresh=force_refresh)
+    ).result(force_refresh=force_refresh, use_etag=False)
     return _plain(result)
 
 
 def get_character_orders(character_id: int, token: Token) -> list[dict]:
     result = esi.client.Market.GetCharactersCharacterIdOrders(
         character_id=int(character_id), token=token
-    ).result()
+    ).result(use_etag=False)
     return _plain(result)
 
 
 def get_market_history(region_id: int, type_id: int) -> list[dict]:
     result = esi.client.Market.GetMarketsRegionIdHistory(
         region_id=int(region_id), type_id=int(type_id)
-    ).result()
+    ).result(use_etag=False)
     return _plain(result)
 
 
@@ -96,31 +96,33 @@ def get_region_orders(
         order_type=order_type,
         region_id=int(region_id),
         type_id=int(type_id),
-    ).results()
+    ).results(use_etag=False)
     return _plain(result)
 
 
 def get_structure_orders(structure_id: int, token: Token) -> list[dict]:
     result = esi.client.Market.GetMarketsStructuresStructureId(
         structure_id=int(structure_id), token=token
-    ).results()
+    ).results(use_etag=False)
     return _plain(result)
 
 
 def get_structure_info(structure_id: int, token: Token) -> dict:
     result = esi.client.Universe.GetUniverseStructuresStructureId(
         structure_id=int(structure_id), token=token
-    ).result()
+    ).result(use_etag=False)
     return _plain(result)
 
 
 def get_type_info(type_id: int) -> dict:
-    result = esi.client.Universe.GetUniverseTypesTypeId(type_id=int(type_id)).result()
+    result = esi.client.Universe.GetUniverseTypesTypeId(type_id=int(type_id)).result(
+        use_etag=False
+    )
     return _plain(result)
 
 
 def post_universe_names(ids: list[int]) -> list[dict]:
     result = esi.client.Universe.PostUniverseNames(body=[int(value) for value in ids]).result(
-        store_cache=False
+        store_cache=False, use_etag=False
     )
     return _plain(result)

@@ -61,7 +61,7 @@ def test_region_orders_uses_django_esi_results(monkeypatch):
     endpoint.assert_called_once_with(
         order_type="sell", region_id=10000002, type_id=34
     )
-    assert operation.result_kwargs == {}
+    assert operation.result_kwargs == {"use_etag": False}
     assert result == [{"order_id": 7, "price": 12.5}]
 
 
@@ -82,4 +82,5 @@ def test_structure_orders_passes_token_object(monkeypatch):
     result = providers.get_structure_orders(1020000000000, token)
 
     endpoint.assert_called_once_with(structure_id=1020000000000, token=token)
+    assert operation.result_kwargs == {"use_etag": False}
     assert result == [{"order_id": 8, "type_id": 35}]
