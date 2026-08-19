@@ -62,6 +62,7 @@ def test_module_filter_controls_render_all_multi_select_options():
     assert 'value="complex"' in html
     assert html.count("checked") == 2
     assert "dropdown" not in html
+    assert html.count("module-filter-btn") == 5
 
 
 @pytest.mark.parametrize(
@@ -72,3 +73,13 @@ def test_tracked_item_pages_include_module_filters(template_name):
     template = get_template(template_name)
 
     assert "markettracker/includes/module_filter_controls.html" in template.template.source
+
+
+def test_module_filter_buttons_define_dark_theme_contrast():
+    template = get_template("markettracker/base.html")
+    source = template.template.source
+
+    assert ':root[data-bs-theme="dark"] .module-filter-btn' in source
+    assert "--bs-btn-color: #f8f9fa" in source
+    assert "--bs-btn-bg: #343a40" in source
+    assert "--bs-btn-border-color: #dee2e6" in source
