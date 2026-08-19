@@ -168,7 +168,7 @@
       <form method="get" class="d-flex flex-wrap gap-2 mt-2 mb-0 align-items-center">
         <input type="hidden" name="loc" value="{{ selected_location.id }}">
         {% if cq %}<input type="hidden" name="cq" value="{{ cq }}">{% endif %}
-        {% include "markettracker/includes/module_filter_dropdown.html" with module_filter_id_prefix="manage-module-filter" %}
+        {% include "markettracker/includes/module_filter_controls.html" with module_filter_id_prefix="manage-module-filter" %}
         <input
           type="text"
           name="q"

@@ -540,7 +540,6 @@ def list_items_view(request):
             "q": q,
             "status": status_filter,
             "module_filters": module_filters,
-            "selected_module_filter_count": len(selected_module_filters),
             "yellow_threshold": yellow_threshold,
             "red_threshold": red_threshold,
             "locations": locations,
@@ -698,7 +697,6 @@ def manage_stock_view(request):
                 "q": q,
                 "cq": cq,
                 "module_filters": module_filters,
-                "selected_module_filter_count": len(selected_module_filters),
             },
         )
 
@@ -770,7 +768,6 @@ def manage_stock_view(request):
             "q": q,
             "cq": cq,
             "module_filters": module_filters,
-            "selected_module_filter_count": len(selected_module_filters),
             "locations": locations,
             "selected_location": loc,
             "location_title": location_display_name(loc),

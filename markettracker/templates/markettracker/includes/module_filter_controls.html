@@ -1,0 +1,23 @@
+{% load i18n %}
+
+<fieldset class="d-flex flex-wrap gap-1 align-items-center m-0 p-0 border-0">
+  <legend class="visually-hidden">{% trans "Module types" %}</legend>
+  <span class="small text-muted me-1">{% trans "Module types:" %}</span>
+  {% for module_filter in module_filters %}
+    <input
+      class="btn-check"
+      type="checkbox"
+      name="module"
+      value="{{ module_filter.key }}"
+      id="{{ module_filter_id_prefix|default:'module-filter' }}-{{ module_filter.key }}"
+      autocomplete="off"
+      {% if module_filter.selected %}checked{% endif %}
+    >
+    <label
+      class="btn btn-outline-secondary btn-sm"
+      for="{{ module_filter_id_prefix|default:'module-filter' }}-{{ module_filter.key }}"
+    >
+      {{ module_filter.label }}
+    </label>
+  {% endfor %}
+</fieldset>
