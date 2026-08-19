@@ -9,7 +9,9 @@ The plugin **does not require** the `structures` app. It uses a numeric
 
 ## Features
 
-- A list of tracked items with yellow and red stock thresholds.
+- A list of tracked items with yellow and red stock thresholds, text search,
+  and multi-select module filters for Meta, Tech I, Tech II, Faction, and
+  Complex (Deadspace) modules.
 - Market-order snapshots for regions and structures.
 - Contract snapshots.
 - Deliveries and basic delivery management.
@@ -22,6 +24,7 @@ The plugin **does not require** the `structures` app. It uses a numeric
 - Alliance Auth `>=5.0,<6` (tested with 5.0.1 and 5.2.0)
 - Django `>=5.2,<6`
 - django-esi `>=9.4,<10`
+- django-eveonline-sde `>=0.1,<1`
 - Celery `>=5.5,<6` and django-celery-beat `>=2.8`
 - django-eveuniverse `>=2,<3`
 - Fittings `>=2.3.2,<3`

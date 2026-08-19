@@ -17,6 +17,7 @@ from django.utils.translation import gettext as _t
 from django.views.decorators.http import require_POST
 from django.views.generic import TemplateView
 from esi.decorators import token_required
+from eve_sde.models import ItemType
 from eveuniverse.models import EveType
 
 from .auth import ownership_for_token
@@ -26,6 +27,11 @@ from .forms import (
     DeliveryQuantityForm,
     TrackedContractForm,
     TrackedItemForm,
+)
+from .item_filters import (
+    MODULE_CATEGORY_ID,
+    matches_module_filters,
+    normalize_module_filters,
 )
 from .models import (
     ContractDelivery,
@@ -392,6 +398,9 @@ def list_items_view(request):
 
     q = request.GET.get("q", "").strip()
     status_filter = (request.GET.get("status") or "").lower()
+    if status_filter not in {"red", "yellow"}:
+        status_filter = ""
+    selected_module_filters = normalize_module_filters(request.GET.getlist("module"))
 
     tracked_items = (
         TrackedItem.objects
@@ -421,6 +430,26 @@ def list_items_view(request):
                     Q(item__eve_group__name__icontains=q) |
                     Q(item__eve_group__eve_category__name__icontains=q)
                 )
+
+    if selected_module_filters:
+        tracked_items = list(tracked_items)
+        type_metadata = {
+            row["id"]: row
+            for row in ItemType.objects.filter(
+                id__in=[tracked.item_id for tracked in tracked_items]
+            ).values("id", "meta_group_id_raw", "meta_level")
+        }
+        tracked_items = [
+            tracked
+            for tracked in tracked_items
+            if tracked.item.eve_group.eve_category_id == MODULE_CATEGORY_ID
+            and (metadata := type_metadata.get(tracked.item_id)) is not None
+            and matches_module_filters(
+                metadata["meta_group_id_raw"],
+                metadata["meta_level"],
+                selected_module_filters,
+            )
+        ]
 
     items_data = []
     for tracked in tracked_items:
@@ -473,6 +502,22 @@ def list_items_view(request):
     for location in locations:
         location.display_name = location_display_name(location)
 
+    module_filter_labels = {
+        "meta": _t("Meta modules"),
+        "t1": _t("Tech I modules"),
+        "t2": _t("Tech II modules"),
+        "faction": _t("Faction modules"),
+        "complex": _t("Complex modules (Deadspace)"),
+    }
+    module_filters = [
+        {
+            "key": key,
+            "label": module_filter_labels[key],
+            "selected": key in selected_module_filters,
+        }
+        for key in module_filter_labels
+    ]
+
     return render(
         request,
         "markettracker/list_items.html",
@@ -481,6 +526,8 @@ def list_items_view(request):
             "location_title": location_title,  # <-- do nagłówka
             "q": q,
             "status": status_filter,
+            "module_filters": module_filters,
+            "selected_module_filter_count": len(selected_module_filters),
             "yellow_threshold": yellow_threshold,
             "red_threshold": red_threshold,
             "locations": locations,

@@ -21,6 +21,7 @@ def test_project_metadata_targets_alliance_auth_5():
     assert "allianceauth>=5.0,<6" in dependencies
     assert "django>=5.2,<6" in dependencies
     assert "django-esi>=9.4,<10" in dependencies
+    assert "django-eveonline-sde>=0.1,<1" in dependencies
 
 
 def test_markettracker_base_extends_aa5_bootstrap_template():

@@ -12,11 +12,10 @@
 <h2>{{ location_title }}</h2>
 
 <div class="card mt-3">
-  <div class="card-header d-flex justify-content-between align-items-center">
+  <div class="card-header">
     <strong>{% trans "Tracked Items" %}</strong>
-    
-    
-    <form method="get" class="d-flex gap-2 mb-0 align-items-center">
+
+    <form method="get" class="d-flex flex-wrap gap-2 mt-2 mb-0 align-items-center">
       <select name="loc" class="form-select form-select-sm" style="max-width: 260px;" onchange="this.form.submit()">
         {% for l in locations %}
           <option value="{{ l.id }}" {% if selected_location and l.id == selected_location.id %}selected{% endif %}>
@@ -25,28 +24,58 @@
         {% endfor %}
       </select>
 
-      {% if status == "red" %}
-        <button onclick="location.href='?loc={{ selected_location.id }}{% if q %}&q={{ q|urlencode }}{% endif %}'" type="button" class="btn btn-primary btn-sm" style="white-space: nowrap;">
-          {% trans "Show All" %}
+      <select name="status" class="form-select form-select-sm" style="max-width: 150px;" aria-label="{% trans 'Stock status' %}">
+        <option value="">{% trans "All statuses" %}</option>
+        <option value="red" {% if status == "red" %}selected{% endif %}>{% trans "Red" %}</option>
+        <option value="yellow" {% if status == "yellow" %}selected{% endif %}>{% trans "Yellow" %}</option>
+      </select>
+
+      <div class="dropdown">
+        <button
+          class="btn btn-outline-secondary btn-sm dropdown-toggle"
+          type="button"
+          data-bs-toggle="dropdown"
+          data-bs-auto-close="outside"
+          aria-expanded="false"
+        >
+          {% trans "Module types" %}
+          {% if selected_module_filter_count %}
+            <span class="badge text-bg-primary ms-1">{{ selected_module_filter_count }}</span>
+          {% endif %}
         </button>
-      {% else %}
-        <button onclick="location.href='?loc={{ selected_location.id }}&status=red{% if q %}&q={{ q|urlencode }}{% endif %}'" type="button" class="btn btn-danger btn-sm">
-          {% trans "RED" %}
-        </button>
-      {%endif%}
-        {% if status == "yellow" %}
-          <button onclick="location.href='?loc={{ selected_location.id }}{% if q %}&q={{ q|urlencode }}{% endif %}'" type="button" class="btn btn-primary btn-sm" style="white-space: nowrap;">
-            {% trans "Show All" %}
-          </button>
-        {% else %}
-          <button onclick="location.href='?loc={{ selected_location.id }}&status=yellow{% if q %}&q={{ q|urlencode }}{% endif %}'" type="button" class="btn btn-warning btn-sm">
-            {% trans "YELLOW" %}
-          </button>
-        {% endif %}
-      <input type="text" name="q" value="{{ q }}" class="form-control form-control-sm" placeholder="{% trans 'Search item...' %}">
-      <button class="btn btn-primary btn-sm" type="submit">{% trans "Search" %}</button>
+        <div class="dropdown-menu p-3" style="min-width: 250px;">
+          <div class="small text-muted mb-2">{% trans "Matches any selected type" %}</div>
+          {% for module_filter in module_filters %}
+            <div class="form-check">
+              <input
+                class="form-check-input"
+                type="checkbox"
+                name="module"
+                value="{{ module_filter.key }}"
+                id="module-filter-{{ module_filter.key }}"
+                {% if module_filter.selected %}checked{% endif %}
+              >
+              <label class="form-check-label" for="module-filter-{{ module_filter.key }}">
+                {{ module_filter.label }}
+              </label>
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+
+      <input
+        type="text"
+        name="q"
+        value="{{ q }}"
+        class="form-control form-control-sm flex-grow-1"
+        style="min-width: 180px;"
+        placeholder="{% trans 'Search item...' %}"
+      >
+      <button class="btn btn-primary btn-sm" type="submit">{% trans "Apply filters" %}</button>
+      <a class="btn btn-outline-secondary btn-sm" href="?loc={{ selected_location.id }}">
+        {% trans "Clear" %}
+      </a>
     </form>
-    
   </div>
   <div class="card-body p-0">
     <div class="table-responsive table-scroll-2">
@@ -87,7 +116,7 @@
             </tr>
         {% empty %}
             <tr>
-                <td colspan="4">{% trans "No items to display." %}</td>
+                <td colspan="5">{% trans "No items to display." %}</td>
             </tr>
         {% endfor %}
     </tbody>
