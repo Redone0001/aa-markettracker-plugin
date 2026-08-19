@@ -1,0 +1,23 @@
+{% load i18n %}
+
+<fieldset class="d-flex flex-wrap gap-1 align-items-center m-0 p-0 border-0">
+  <legend class="visually-hidden">{% trans "Item types" %}</legend>
+  <span class="item-filter-label small fw-semibold me-1">{% trans "Item types:" %}</span>
+  {% for item_filter in item_filters %}
+    <input
+      class="btn-check"
+      type="checkbox"
+      name="item_type"
+      value="{{ item_filter.key }}"
+      id="{{ item_filter_id_prefix|default:'item-filter' }}-{{ item_filter.key }}"
+      autocomplete="off"
+      {% if item_filter.selected %}checked{% endif %}
+    >
+    <label
+      class="btn item-filter-btn btn-sm"
+      for="{{ item_filter_id_prefix|default:'item-filter' }}-{{ item_filter.key }}"
+    >
+      {{ item_filter.label }}
+    </label>
+  {% endfor %}
+</fieldset>

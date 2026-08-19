@@ -30,8 +30,8 @@ from .forms import (
 )
 from .item_filters import (
     MODULE_CATEGORY_ID,
-    matches_module_filters,
-    normalize_module_filters,
+    matches_item_filters,
+    normalize_item_filters,
 )
 from .models import (
     ContractDelivery,
@@ -66,38 +66,48 @@ EXCLUDED_CATEGORIES = ["Blueprint", "SKINs"]
 REFRESH_ENQUEUE_TTL = 60
 
 
-def _filter_tracked_items_by_module_type(tracked_items, selected_filters):
-    """Apply the SDE-backed module filters to a tracked-item queryset."""
+def _filter_tracked_items_by_type(tracked_items, selected_filters):
+    """Apply category and SDE-backed filters to a tracked-item queryset."""
     if not selected_filters:
         return tracked_items
 
     tracked_items = list(tracked_items)
-    type_metadata = {
-        row["id"]: row
-        for row in ItemType.objects.filter(
-            id__in=[tracked.item_id for tracked in tracked_items]
-        ).values("id", "meta_group_id_raw", "meta_level")
-    }
+    sde_filters = {"meta", "t1", "t2", "faction", "complex"}
+    type_metadata = {}
+    if sde_filters.intersection(selected_filters):
+        module_type_ids = [
+            tracked.item_id
+            for tracked in tracked_items
+            if tracked.item.eve_group.eve_category_id == MODULE_CATEGORY_ID
+        ]
+        type_metadata = {
+            row["id"]: row
+            for row in ItemType.objects.filter(id__in=module_type_ids).values(
+                "id", "meta_group_id_raw", "meta_level"
+            )
+        }
+
     return [
         tracked
         for tracked in tracked_items
-        if tracked.item.eve_group.eve_category_id == MODULE_CATEGORY_ID
-        and (metadata := type_metadata.get(tracked.item_id)) is not None
-        and matches_module_filters(
-            metadata["meta_group_id_raw"],
-            metadata["meta_level"],
+        if matches_item_filters(
+            tracked.item.eve_group.eve_category_id,
+            type_metadata.get(tracked.item_id, {}).get("meta_group_id_raw"),
+            type_metadata.get(tracked.item_id, {}).get("meta_level"),
             selected_filters,
         )
     ]
 
 
-def _module_filter_options(selected_filters):
+def _item_filter_options(selected_filters):
     labels = {
         "meta": _t("Meta modules"),
         "t1": _t("Tech I modules"),
         "t2": _t("Tech II modules"),
         "faction": _t("Faction modules"),
         "complex": _t("Complex modules (Deadspace)"),
+        "ship": _t("Ships"),
+        "implant": _t("Implants"),
     }
     return [
         {
@@ -443,7 +453,9 @@ def list_items_view(request):
     status_filter = (request.GET.get("status") or "").lower()
     if status_filter not in {"red", "yellow"}:
         status_filter = ""
-    selected_module_filters = normalize_module_filters(request.GET.getlist("module"))
+    selected_item_filters = normalize_item_filters(
+        request.GET.getlist("item_type") + request.GET.getlist("module")
+    )
 
     tracked_items = (
         TrackedItem.objects
@@ -474,9 +486,7 @@ def list_items_view(request):
                     Q(item__eve_group__eve_category__name__icontains=q)
                 )
 
-    tracked_items = _filter_tracked_items_by_module_type(
-        tracked_items, selected_module_filters
-    )
+    tracked_items = _filter_tracked_items_by_type(tracked_items, selected_item_filters)
 
     items_data = []
     for tracked in tracked_items:
@@ -529,7 +539,7 @@ def list_items_view(request):
     for location in locations:
         location.display_name = location_display_name(location)
 
-    module_filters = _module_filter_options(selected_module_filters)
+    item_filters = _item_filter_options(selected_item_filters)
 
     return render(
         request,
@@ -539,7 +549,7 @@ def list_items_view(request):
             "location_title": location_title,  # <-- do nagłówka
             "q": q,
             "status": status_filter,
-            "module_filters": module_filters,
+            "item_filters": item_filters,
             "yellow_threshold": yellow_threshold,
             "red_threshold": red_threshold,
             "locations": locations,
@@ -558,8 +568,10 @@ def manage_stock_view(request):
 
     q = request.GET.get("q", "").strip()
     cq = request.GET.get("cq", "")
-    selected_module_filters = normalize_module_filters(request.GET.getlist("module"))
-    module_filters = _module_filter_options(selected_module_filters)
+    selected_item_filters = normalize_item_filters(
+        request.GET.getlist("item_type") + request.GET.getlist("module")
+    )
+    item_filters = _item_filter_options(selected_item_filters)
 
     add_mode = "add" in request.GET
     edit_id = request.GET.get("edit_id")
@@ -696,7 +708,7 @@ def manage_stock_view(request):
                 "location_title": location_display_name(loc),
                 "q": q,
                 "cq": cq,
-                "module_filters": module_filters,
+                "item_filters": item_filters,
             },
         )
 
@@ -728,9 +740,7 @@ def manage_stock_view(request):
                     Q(item__eve_group__eve_category__name__icontains=q)
                 )
 
-    tracked_items = _filter_tracked_items_by_module_type(
-        tracked_items, selected_module_filters
-    )
+    tracked_items = _filter_tracked_items_by_type(tracked_items, selected_item_filters)
 
     tracked_contracts_loc = (
         TrackedContractLocation.objects
@@ -767,7 +777,7 @@ def manage_stock_view(request):
             "market_character": market_character,
             "q": q,
             "cq": cq,
-            "module_filters": module_filters,
+            "item_filters": item_filters,
             "locations": locations,
             "selected_location": loc,
             "location_title": location_display_name(loc),

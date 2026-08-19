@@ -10,8 +10,8 @@ The plugin **does not require** the `structures` app. It uses a numeric
 ## Features
 
 - A list of tracked items with yellow and red stock thresholds, text search,
-  and multi-select module filters for Meta, Tech I, Tech II, Faction, and
-  Complex (Deadspace) modules.
+  and multi-select item filters for Meta, Tech I, Tech II, Faction, and
+  Complex (Deadspace) modules, plus ships and implants.
 - Market-order snapshots for regions and structures.
 - Contract snapshots.
 - Deliveries and basic delivery management.
