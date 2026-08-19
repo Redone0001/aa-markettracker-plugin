@@ -1,4 +1,5 @@
 import pytest
+from django.template.loader import get_template, render_to_string
 
 from markettracker.item_filters import (
     matches_module_filters,
@@ -41,3 +42,33 @@ def test_module_filter_normalization_removes_unknown_values_and_duplicates():
     values = ["complex", "unknown", "t1", "complex"]
 
     assert normalize_module_filters(values) == ("t1", "complex")
+
+
+def test_module_filter_dropdown_renders_all_multi_select_options():
+    options = [
+        {"key": key, "label": key, "selected": key in {"t2", "complex"}}
+        for key in ("meta", "t1", "t2", "faction", "complex")
+    ]
+
+    html = render_to_string(
+        "markettracker/includes/module_filter_dropdown.html",
+        {
+            "module_filters": options,
+            "selected_module_filter_count": 2,
+        },
+    )
+
+    assert html.count('name="module"') == 5
+    assert 'value="t2"' in html
+    assert 'value="complex"' in html
+    assert html.count("checked") == 2
+
+
+@pytest.mark.parametrize(
+    "template_name",
+    ["markettracker/list_items.html", "markettracker/manage_stock.html"],
+)
+def test_tracked_item_pages_include_module_filters(template_name):
+    template = get_template(template_name)
+
+    assert "markettracker/includes/module_filter_dropdown.html" in template.template.source

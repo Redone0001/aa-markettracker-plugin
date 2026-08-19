@@ -61,6 +61,11 @@
     {# zachowaj filtry po zmianie lokacji #}
   {% if q %}<input type="hidden" name="q" value="{{ q }}">{% endif %}
   {% if cq %}<input type="hidden" name="cq" value="{{ cq }}">{% endif %}
+  {% for module_filter in module_filters %}
+    {% if module_filter.selected %}
+      <input type="hidden" name="module" value="{{ module_filter.key }}">
+    {% endif %}
+  {% endfor %}
 </form>
 {# ============ ITEMS FORM ============ #}
 {% if form %}
@@ -158,11 +163,24 @@
   {# ITEMS CARD #}
   
   <div class="card mt-3">
-    <div class="card-header d-flex justify-content-between align-items-center">
+    <div class="card-header">
       <strong>{% trans "Tracked Items" %}</strong>
-      <form method="get" class="d-flex gap-2 mb-0">
-        <input type="text" name="q" value="{{ q }}" class="form-control form-control-sm" placeholder="{% trans 'Search item...' %}">
-        <button class="btn btn-primary btn-sm" type="submit">{% trans "Search" %}</button>
+      <form method="get" class="d-flex flex-wrap gap-2 mt-2 mb-0 align-items-center">
+        <input type="hidden" name="loc" value="{{ selected_location.id }}">
+        {% if cq %}<input type="hidden" name="cq" value="{{ cq }}">{% endif %}
+        {% include "markettracker/includes/module_filter_dropdown.html" with module_filter_id_prefix="manage-module-filter" %}
+        <input
+          type="text"
+          name="q"
+          value="{{ q }}"
+          class="form-control form-control-sm flex-grow-1"
+          style="min-width: 180px;"
+          placeholder="{% trans 'Search item...' %}"
+        >
+        <button class="btn btn-primary btn-sm" type="submit">{% trans "Apply filters" %}</button>
+        <a href="?loc={{ selected_location.id }}{% if cq %}&cq={{ cq|urlencode }}{% endif %}" class="btn btn-outline-secondary btn-sm">
+          {% trans "Clear" %}
+        </a>
         <a href="?loc={{ selected_location.id }}&add=1" class="btn btn-success btn-sm">{% trans "Add" %}</a>
       </form>
     </div>

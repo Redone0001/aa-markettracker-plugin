@@ -66,6 +66,49 @@ EXCLUDED_CATEGORIES = ["Blueprint", "SKINs"]
 REFRESH_ENQUEUE_TTL = 60
 
 
+def _filter_tracked_items_by_module_type(tracked_items, selected_filters):
+    """Apply the SDE-backed module filters to a tracked-item queryset."""
+    if not selected_filters:
+        return tracked_items
+
+    tracked_items = list(tracked_items)
+    type_metadata = {
+        row["id"]: row
+        for row in ItemType.objects.filter(
+            id__in=[tracked.item_id for tracked in tracked_items]
+        ).values("id", "meta_group_id_raw", "meta_level")
+    }
+    return [
+        tracked
+        for tracked in tracked_items
+        if tracked.item.eve_group.eve_category_id == MODULE_CATEGORY_ID
+        and (metadata := type_metadata.get(tracked.item_id)) is not None
+        and matches_module_filters(
+            metadata["meta_group_id_raw"],
+            metadata["meta_level"],
+            selected_filters,
+        )
+    ]
+
+
+def _module_filter_options(selected_filters):
+    labels = {
+        "meta": _t("Meta modules"),
+        "t1": _t("Tech I modules"),
+        "t2": _t("Tech II modules"),
+        "faction": _t("Faction modules"),
+        "complex": _t("Complex modules (Deadspace)"),
+    }
+    return [
+        {
+            "key": key,
+            "label": label,
+            "selected": key in selected_filters,
+        }
+        for key, label in labels.items()
+    ]
+
+
 def _enqueue_refresh_once(task, task_name: str) -> bool:
     """Enqueue a refresh at most once per TTL across all web workers."""
     enqueue_key = f"markettracker:enqueue:{task_name}"
@@ -431,25 +474,9 @@ def list_items_view(request):
                     Q(item__eve_group__eve_category__name__icontains=q)
                 )
 
-    if selected_module_filters:
-        tracked_items = list(tracked_items)
-        type_metadata = {
-            row["id"]: row
-            for row in ItemType.objects.filter(
-                id__in=[tracked.item_id for tracked in tracked_items]
-            ).values("id", "meta_group_id_raw", "meta_level")
-        }
-        tracked_items = [
-            tracked
-            for tracked in tracked_items
-            if tracked.item.eve_group.eve_category_id == MODULE_CATEGORY_ID
-            and (metadata := type_metadata.get(tracked.item_id)) is not None
-            and matches_module_filters(
-                metadata["meta_group_id_raw"],
-                metadata["meta_level"],
-                selected_module_filters,
-            )
-        ]
+    tracked_items = _filter_tracked_items_by_module_type(
+        tracked_items, selected_module_filters
+    )
 
     items_data = []
     for tracked in tracked_items:
@@ -502,21 +529,7 @@ def list_items_view(request):
     for location in locations:
         location.display_name = location_display_name(location)
 
-    module_filter_labels = {
-        "meta": _t("Meta modules"),
-        "t1": _t("Tech I modules"),
-        "t2": _t("Tech II modules"),
-        "faction": _t("Faction modules"),
-        "complex": _t("Complex modules (Deadspace)"),
-    }
-    module_filters = [
-        {
-            "key": key,
-            "label": module_filter_labels[key],
-            "selected": key in selected_module_filters,
-        }
-        for key in module_filter_labels
-    ]
+    module_filters = _module_filter_options(selected_module_filters)
 
     return render(
         request,
@@ -546,6 +559,8 @@ def manage_stock_view(request):
 
     q = request.GET.get("q", "").strip()
     cq = request.GET.get("cq", "")
+    selected_module_filters = normalize_module_filters(request.GET.getlist("module"))
+    module_filters = _module_filter_options(selected_module_filters)
 
     add_mode = "add" in request.GET
     edit_id = request.GET.get("edit_id")
@@ -682,11 +697,17 @@ def manage_stock_view(request):
                 "location_title": location_display_name(loc),
                 "q": q,
                 "cq": cq,
+                "module_filters": module_filters,
+                "selected_module_filter_count": len(selected_module_filters),
             },
         )
 
     # ---------- Lists ----------
-    tracked_items = TrackedItem.objects.filter(location=loc).select_related("item").all()
+    tracked_items = (
+        TrackedItem.objects
+        .filter(location=loc)
+        .select_related("item", "item__eve_group", "item__eve_group__eve_category")
+    )
     if q:
         if q.lower().startswith("cat:"):
             term = q.split(":", 1)[1].strip()
@@ -708,6 +729,10 @@ def manage_stock_view(request):
                     Q(item__eve_group__name__icontains=q) |
                     Q(item__eve_group__eve_category__name__icontains=q)
                 )
+
+    tracked_items = _filter_tracked_items_by_module_type(
+        tracked_items, selected_module_filters
+    )
 
     tracked_contracts_loc = (
         TrackedContractLocation.objects
@@ -744,6 +769,8 @@ def manage_stock_view(request):
             "market_character": market_character,
             "q": q,
             "cq": cq,
+            "module_filters": module_filters,
+            "selected_module_filter_count": len(selected_module_filters),
             "locations": locations,
             "selected_location": loc,
             "location_title": location_display_name(loc),
