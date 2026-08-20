@@ -3,6 +3,7 @@ from django.contrib.auth.models import Group
 from django.utils.translation import gettext_lazy as _
 from eveuniverse.models import EveRegion, EveType
 
+from .bulk_import import BulkImportError, import_tracked_items, parse_bulk_item_list
 from .models import (
     HAS_FITTINGS,
     ContractDelivery,
@@ -55,6 +56,64 @@ class TrackedItemForm(forms.ModelForm):
                     )
 
         self.fields["desired_quantity"].widget.attrs.update({"min": 0, "placeholder": "0"})
+
+
+class BulkTrackedItemForm(forms.Form):
+    items = forms.CharField(
+        label=_("Items and quantities"),
+        max_length=100_000,
+        widget=forms.Textarea(
+            attrs={
+                "class": "form-control font-monospace",
+                "rows": 12,
+                "placeholder": _("Machariel x1\nBarrage L x1000"),
+                "spellcheck": "false",
+            }
+        ),
+        help_text=_(
+            "One item per line. Use 'Item name x2' or separate the quantity "
+            "with a tab or at least two spaces. Missing quantities default to 1."
+        ),
+    )
+    multiplier = forms.IntegerField(
+        label=_("Multiplier"),
+        min_value=1,
+        initial=1,
+        widget=forms.NumberInput(
+            attrs={"class": "form-control", "min": 1, "inputmode": "numeric"}
+        ),
+    )
+    overwrite_amount = forms.BooleanField(
+        label=_("Overwrite amount"),
+        required=False,
+        help_text=_(
+            "Replace the desired quantity of items already tracked at this location. "
+            "Leave unchecked to keep existing amounts unchanged."
+        ),
+        widget=forms.CheckboxInput(attrs={"class": "form-check-input"}),
+    )
+
+    def clean_items(self):
+        raw_items = self.cleaned_data["items"]
+        entries, errors = parse_bulk_item_list(raw_items)
+        if errors:
+            raise forms.ValidationError(errors)
+        self.parsed_entries = entries
+        return raw_items
+
+    def import_items(self, location):
+        if not self.is_valid():
+            raise ValueError("BulkTrackedItemForm must be valid before importing.")
+        try:
+            return import_tracked_items(
+                location=location,
+                entries=self.parsed_entries,
+                multiplier=self.cleaned_data["multiplier"],
+                overwrite_amount=self.cleaned_data["overwrite_amount"],
+            )
+        except BulkImportError as error:
+            self.add_error("items", str(error))
+            return None
 
 
 

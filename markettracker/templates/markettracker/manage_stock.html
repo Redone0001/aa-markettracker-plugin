@@ -160,6 +160,57 @@
 {% else %}
   <h1 class="mb-4">{% trans "Manage Stock" %}</h1>
 
+  <details class="card mt-3" {% if bulk_import_form.errors %}open{% endif %}>
+    <summary class="card-header" style="cursor: pointer;">
+      <strong>{% trans "Bulk upload tracked items" %}</strong>
+      <span class="ms-2">{% trans "Paste an item list" %}</span>
+    </summary>
+    <div class="card-body">
+      <form method="post">
+        {% csrf_token %}
+        {% if bulk_import_form.non_field_errors %}
+          <div class="alert alert-danger">{{ bulk_import_form.non_field_errors }}</div>
+        {% endif %}
+
+        <div class="mb-3">
+          <label class="form-label" for="{{ bulk_import_form.items.id_for_label }}">
+            {{ bulk_import_form.items.label }}
+          </label>
+          {{ bulk_import_form.items }}
+          {% for error in bulk_import_form.items.errors %}
+            <div class="text-danger small mt-1">{{ error }}</div>
+          {% endfor %}
+          <div class="form-text">{{ bulk_import_form.items.help_text }}</div>
+        </div>
+
+        <div class="row g-3 align-items-start">
+          <div class="col-12 col-md-3">
+            <label class="form-label" for="{{ bulk_import_form.multiplier.id_for_label }}">
+              {{ bulk_import_form.multiplier.label }}
+            </label>
+            {{ bulk_import_form.multiplier }}
+            {% for error in bulk_import_form.multiplier.errors %}
+              <div class="text-danger small mt-1">{{ error }}</div>
+            {% endfor %}
+          </div>
+          <div class="col-12 col-md-9 pt-md-4">
+            <div class="form-check">
+              {{ bulk_import_form.overwrite_amount }}
+              <label class="form-check-label" for="{{ bulk_import_form.overwrite_amount.id_for_label }}">
+                {{ bulk_import_form.overwrite_amount.label }}
+              </label>
+            </div>
+            <div class="form-text">{{ bulk_import_form.overwrite_amount.help_text }}</div>
+          </div>
+        </div>
+
+        <button type="submit" name="bulk_import" value="1" class="btn btn-primary mt-3">
+          {% trans "Import tracked items" %}
+        </button>
+      </form>
+    </div>
+  </details>
+
   {# ITEMS CARD #}
   
   <div class="card mt-3">

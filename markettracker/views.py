@@ -23,6 +23,7 @@ from eveuniverse.models import EveType
 from .auth import ownership_for_token
 from .esi import get_best_prices, get_market_history, get_type_name
 from .forms import (
+    BulkTrackedItemForm,
     ContractDeliveryQuantityForm,
     DeliveryQuantityForm,
     TrackedContractForm,
@@ -572,6 +573,7 @@ def manage_stock_view(request):
         request.GET.getlist("item_type") + request.GET.getlist("module")
     )
     item_filters = _item_filter_options(selected_item_filters)
+    bulk_import_form = BulkTrackedItemForm()
 
     add_mode = "add" in request.GET
     edit_id = request.GET.get("edit_id")
@@ -580,6 +582,35 @@ def manage_stock_view(request):
     tc_edit_id = request.GET.get("tc_edit")
 
     if request.method == "POST":
+        if "bulk_import" in request.POST:
+            bulk_import_form = BulkTrackedItemForm(request.POST)
+            if bulk_import_form.is_valid():
+                result = bulk_import_form.import_items(loc)
+                if result is not None:
+                    messages.success(
+                        request,
+                        _t(
+                            "Bulk import complete: %(added)d added, %(updated)d updated, "
+                            "%(skipped)d existing items unchanged."
+                        ) % {
+                            "added": result.added,
+                            "updated": result.updated,
+                            "skipped": result.skipped,
+                        },
+                    )
+                    if result.unknown_names:
+                        displayed_names = result.unknown_names[:10]
+                        remaining_count = len(result.unknown_names) - len(displayed_names)
+                        unknown_message = _t("Unknown or unavailable item names: %(names)s") % {
+                            "names": ", ".join(displayed_names)
+                        }
+                        if remaining_count:
+                            unknown_message += _t(" (and %(count)d more)") % {
+                                "count": remaining_count
+                            }
+                        messages.warning(request, unknown_message)
+                    return redirect(f"{reverse('markettracker:manage_stock')}?loc={loc.id}")
+
         if "refresh" in request.POST:
             if _enqueue_refresh_once(fetch_market_data_auto, "market-data"):
                 messages.success(request, _t("Market data refresh started."))
@@ -709,6 +740,7 @@ def manage_stock_view(request):
                 "q": q,
                 "cq": cq,
                 "item_filters": item_filters,
+                "bulk_import_form": bulk_import_form,
             },
         )
 
@@ -778,6 +810,7 @@ def manage_stock_view(request):
             "q": q,
             "cq": cq,
             "item_filters": item_filters,
+            "bulk_import_form": bulk_import_form,
             "locations": locations,
             "selected_location": loc,
             "location_title": location_display_name(loc),

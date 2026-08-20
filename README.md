@@ -12,6 +12,7 @@ The plugin **does not require** the `structures` app. It uses a numeric
 - A list of tracked items with yellow and red stock thresholds, text search,
   and multi-select item filters for Meta, Tech I, Tech II, Faction, and
   Complex (Deadspace) modules, plus ships and implants.
+- Bulk tracked-item imports with quantity multipliers and optional overwrites.
 - Market-order snapshots for regions and structures.
 - Contract snapshots.
 - Deliveries and basic delivery management.
@@ -148,6 +149,24 @@ management:
 - `markettracker.can_manage_deliveries` — view and manage all deliveries.
 
 The diagnostics page is restricted to Django superusers.
+
+## Bulk tracked-item import
+
+Users with `markettracker.can_manage_stocks` can open **Manage Stock**, expand
+**Bulk upload tracked items**, and paste one item per line. Supported formats
+include:
+
+```text
+Machariel x1
+Barrage L x1000
+Void S    1628
+```
+
+The third example uses a tab or at least two spaces before the quantity. A line
+without a quantity defaults to `1`. Duplicate names are combined before the
+multiplier is applied. Existing desired quantities remain unchanged unless
+**Overwrite amount** is selected. Names that do not exactly match an eligible,
+published item in the local EVE Universe database are skipped and reported.
 
 ## Development and tests
 
