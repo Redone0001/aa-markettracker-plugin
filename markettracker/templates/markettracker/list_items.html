@@ -1,5 +1,5 @@
 {% extends "markettracker/base.html" %}
-{% load i18n %}
+{% load i18n market_extras %}
 
 {% block header_nav_collapse_right %}
     {{ block.super }}
@@ -76,7 +76,7 @@
                 </a>  
               </td>
               <td>{{ entry.volume_remain|default:"0" }} / {{ entry.desired_quantity|default:"—" }}</td>
-              <td>{% if entry.price %}{{ entry.price|floatformat:2 }} ISK{% else %}<span class="text-muted">{% trans "No data" %}</span>{% endif %}</td>
+              <td>{% if entry.price %}{{ entry.price|compact_isk }}{% else %}<span class="text-muted">{% trans "No data" %}</span>{% endif %}</td>
               <td class="text-end">
                   <a href="{% url 'markettracker:create_delivery' entry.item.id %}" class="btn btn-primary btn-sm btn-deliver" data-pending="{{ entry.pending_count }}" data-pqty="{{ item.pending_qty }}">
                       <i class="fa fa-truck"></i> {% trans "Deliver" %}
