@@ -232,7 +232,7 @@
           placeholder="{% trans 'Search item...' %}"
         >
         <button class="btn btn-primary btn-sm" type="submit">{% trans "Apply filters" %}</button>
-        <a href="?loc={{ selected_location.id }}{% if cq %}&cq={{ cq|urlencode }}{% endif %}" class="btn btn-outline-secondary btn-sm">
+        <a href="?loc={{ selected_location.id }}{% if cq %}&cq={{ cq|urlencode }}{% endif %}" class="btn btn-outline-secondary filter-clear-btn btn-sm">
           {% trans "Clear" %}
         </a>
         <a href="?loc={{ selected_location.id }}&add=1" class="btn btn-success btn-sm">{% trans "Add" %}</a>

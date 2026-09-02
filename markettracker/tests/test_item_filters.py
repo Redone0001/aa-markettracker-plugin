@@ -142,3 +142,25 @@ def test_item_filter_buttons_define_dark_theme_contrast():
     assert "--bs-btn-color: #f8f9fa" in source
     assert "--bs-btn-bg: #343a40" in source
     assert "--bs-btn-border-color: #dee2e6" in source
+
+
+@pytest.mark.parametrize(
+    "template_name",
+    ["markettracker/list_items.html", "markettracker/manage_stock.html"],
+)
+def test_filter_clear_buttons_use_high_contrast_class(template_name):
+    source = get_template(template_name).template.source
+
+    assert "filter-clear-btn" in source
+
+
+def test_filter_clear_button_defines_dark_theme_contrast():
+    source = get_template("markettracker/base.html").template.source
+    start = source.index(':root[data-bs-theme="dark"] .filter-clear-btn')
+    style_block = source[start : source.index("}", start)]
+
+    assert ':root[data-theme="dark"] .filter-clear-btn' in style_block
+    assert "html.dark .filter-clear-btn" in style_block
+    assert "--bs-btn-color: #f8f9fa" in style_block
+    assert "--bs-btn-border-color: #f8f9fa" in style_block
+    assert "--bs-btn-hover-bg: #f8f9fa" in style_block
