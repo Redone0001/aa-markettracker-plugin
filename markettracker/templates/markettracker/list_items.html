@@ -24,11 +24,36 @@
         {% endfor %}
       </select>
 
-      <select name="status" class="form-select form-select-sm" style="max-width: 150px;" aria-label="{% trans 'Stock status' %}">
-        <option value="">{% trans "All statuses" %}</option>
-        <option value="red" {% if status == "red" %}selected{% endif %}>{% trans "Red" %}</option>
-        <option value="yellow" {% if status == "yellow" %}selected{% endif %}>{% trans "Yellow" %}</option>
-      </select>
+      <fieldset class="d-flex flex-wrap gap-1 align-items-center m-0 p-0 border-0">
+        <legend class="visually-hidden">{% trans "Stock statuses" %}</legend>
+        <span class="small fw-semibold me-1">{% trans "Statuses:" %}</span>
+
+        <input
+          class="btn-check"
+          type="checkbox"
+          name="status"
+          value="red"
+          id="stock-status-red"
+          autocomplete="off"
+          {% if "red" in status_filters %}checked{% endif %}
+        >
+        <label class="btn btn-outline-danger btn-sm" for="stock-status-red">
+          {% trans "Red" %}
+        </label>
+
+        <input
+          class="btn-check"
+          type="checkbox"
+          name="status"
+          value="yellow"
+          id="stock-status-yellow"
+          autocomplete="off"
+          {% if "yellow" in status_filters %}checked{% endif %}
+        >
+        <label class="btn btn-outline-warning btn-sm" for="stock-status-yellow">
+          {% trans "Yellow" %}
+        </label>
+      </fieldset>
 
       {% include "markettracker/includes/item_filter_controls.html" %}
 

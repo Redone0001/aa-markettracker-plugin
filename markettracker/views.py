@@ -451,9 +451,12 @@ def list_items_view(request):
     location_title = location_display_name(loc)
 
     q = request.GET.get("q", "").strip()
-    status_filter = (request.GET.get("status") or "").lower()
-    if status_filter not in {"red", "yellow"}:
-        status_filter = ""
+    requested_statuses = {
+        value.strip().lower() for value in request.GET.getlist("status")
+    }
+    selected_statuses = tuple(
+        status for status in ("red", "yellow") if status in requested_statuses
+    )
     selected_item_filters = normalize_item_filters(
         request.GET.getlist("item_type") + request.GET.getlist("module")
     )
@@ -531,10 +534,9 @@ def list_items_view(request):
             "need": need,
         })
 
-    if status_filter == "red":
-        items_data = [it for it in items_data if it["status"] == "RED"]
-    if status_filter == "yellow":
-        items_data = [it for it in items_data if it["status"] == "YELLOW"]
+    if selected_statuses:
+        allowed_statuses = {status.upper() for status in selected_statuses}
+        items_data = [it for it in items_data if it["status"] in allowed_statuses]
 
     locations = list(TrackedLocation.objects.filter(is_active=True).order_by("-is_default", "name"))
     for location in locations:
@@ -549,7 +551,7 @@ def list_items_view(request):
             "items": items_data,
             "location_title": location_title,  # <-- do nagłówka
             "q": q,
-            "status": status_filter,
+            "status_filters": selected_statuses,
             "item_filters": item_filters,
             "yellow_threshold": yellow_threshold,
             "red_threshold": red_threshold,
