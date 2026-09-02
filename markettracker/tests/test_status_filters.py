@@ -116,3 +116,31 @@ def test_list_items_renders_red_and_yellow_as_checkboxes():
     assert 'value="yellow"' in source
     assert '"red" in status_filters' in source
     assert '"yellow" in status_filters' in source
+
+
+@pytest.mark.django_db
+def test_list_items_preserves_item_type_exclusion_mode(
+    client,
+    status_user,
+    status_location,
+    tracked_status_items,
+):
+    client.force_login(status_user)
+
+    with patch("markettracker.views.location_display_name", return_value=status_location.name):
+        with patch("markettracker.views.render", return_value=HttpResponse()) as render_mock:
+            response = client.get(
+                reverse("markettracker:list_items"),
+                {
+                    "loc": status_location.pk,
+                    "item_type": ["ship"],
+                    "exclude_item_types": "1",
+                },
+            )
+
+    assert response.status_code == 200
+    context = render_mock.call_args.args[2]
+    assert context["exclude_item_types"] is True
+    assert [option["key"] for option in context["item_filters"] if option["selected"]] == [
+        "ship"
+    ]

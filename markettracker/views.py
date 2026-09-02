@@ -67,7 +67,12 @@ EXCLUDED_CATEGORIES = ["Blueprint", "SKINs"]
 REFRESH_ENQUEUE_TTL = 60
 
 
-def _filter_tracked_items_by_type(tracked_items, selected_filters):
+def _filter_tracked_items_by_type(
+    tracked_items,
+    selected_filters,
+    *,
+    exclude_matches=False,
+):
     """Apply category and SDE-backed filters to a tracked-item queryset."""
     if not selected_filters:
         return tracked_items
@@ -88,16 +93,18 @@ def _filter_tracked_items_by_type(tracked_items, selected_filters):
             )
         }
 
-    return [
-        tracked
-        for tracked in tracked_items
-        if matches_item_filters(
+    filtered_items = []
+    for tracked in tracked_items:
+        matches = matches_item_filters(
             tracked.item.eve_group.eve_category_id,
             type_metadata.get(tracked.item_id, {}).get("meta_group_id_raw"),
             type_metadata.get(tracked.item_id, {}).get("meta_level"),
             selected_filters,
         )
-    ]
+        if matches != exclude_matches:
+            filtered_items.append(tracked)
+
+    return filtered_items
 
 
 def _item_filter_options(selected_filters):
@@ -460,6 +467,7 @@ def list_items_view(request):
     selected_item_filters = normalize_item_filters(
         request.GET.getlist("item_type") + request.GET.getlist("module")
     )
+    exclude_item_types = request.GET.get("exclude_item_types") == "1"
 
     tracked_items = (
         TrackedItem.objects
@@ -490,7 +498,11 @@ def list_items_view(request):
                     Q(item__eve_group__eve_category__name__icontains=q)
                 )
 
-    tracked_items = _filter_tracked_items_by_type(tracked_items, selected_item_filters)
+    tracked_items = _filter_tracked_items_by_type(
+        tracked_items,
+        selected_item_filters,
+        exclude_matches=exclude_item_types,
+    )
 
     items_data = []
     for tracked in tracked_items:
@@ -553,6 +565,7 @@ def list_items_view(request):
             "q": q,
             "status_filters": selected_statuses,
             "item_filters": item_filters,
+            "exclude_item_types": exclude_item_types,
             "yellow_threshold": yellow_threshold,
             "red_threshold": red_threshold,
             "locations": locations,
@@ -574,6 +587,7 @@ def manage_stock_view(request):
     selected_item_filters = normalize_item_filters(
         request.GET.getlist("item_type") + request.GET.getlist("module")
     )
+    exclude_item_types = request.GET.get("exclude_item_types") == "1"
     item_filters = _item_filter_options(selected_item_filters)
     bulk_import_form = BulkTrackedItemForm()
 
@@ -742,6 +756,7 @@ def manage_stock_view(request):
                 "q": q,
                 "cq": cq,
                 "item_filters": item_filters,
+                "exclude_item_types": exclude_item_types,
                 "bulk_import_form": bulk_import_form,
             },
         )
@@ -774,7 +789,11 @@ def manage_stock_view(request):
                     Q(item__eve_group__eve_category__name__icontains=q)
                 )
 
-    tracked_items = _filter_tracked_items_by_type(tracked_items, selected_item_filters)
+    tracked_items = _filter_tracked_items_by_type(
+        tracked_items,
+        selected_item_filters,
+        exclude_matches=exclude_item_types,
+    )
 
     tracked_contracts_loc = (
         TrackedContractLocation.objects
@@ -812,6 +831,7 @@ def manage_stock_view(request):
             "q": q,
             "cq": cq,
             "item_filters": item_filters,
+            "exclude_item_types": exclude_item_types,
             "bulk_import_form": bulk_import_form,
             "locations": locations,
             "selected_location": loc,

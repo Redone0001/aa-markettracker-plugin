@@ -66,6 +66,9 @@
       <input type="hidden" name="item_type" value="{{ item_filter.key }}">
     {% endif %}
   {% endfor %}
+  {% if exclude_item_types %}
+    <input type="hidden" name="exclude_item_types" value="1">
+  {% endif %}
 </form>
 {# ============ ITEMS FORM ============ #}
 {% if form %}

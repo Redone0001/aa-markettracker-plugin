@@ -20,4 +20,22 @@
       {{ item_filter.label }}
     </label>
   {% endfor %}
+
+  <div class="form-check form-switch ms-2">
+    <input
+      class="form-check-input"
+      type="checkbox"
+      role="switch"
+      name="exclude_item_types"
+      value="1"
+      id="{{ item_filter_id_prefix|default:'item-filter' }}-exclude"
+      {% if exclude_item_types %}checked{% endif %}
+    >
+    <label
+      class="form-check-label small"
+      for="{{ item_filter_id_prefix|default:'item-filter' }}-exclude"
+    >
+      {% trans "Exclude selected types" %}
+    </label>
+  </div>
 </fieldset>

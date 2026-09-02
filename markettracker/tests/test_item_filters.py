@@ -1,3 +1,5 @@
+from types import SimpleNamespace
+
 import pytest
 from django.template.loader import get_template, render_to_string
 
@@ -6,6 +8,7 @@ from markettracker.item_filters import (
     matches_item_filters,
     normalize_item_filters,
 )
+from markettracker.views import _filter_tracked_items_by_type
 
 
 @pytest.mark.parametrize(
@@ -43,6 +46,40 @@ def test_no_item_filters_accepts_every_item():
     assert matches_item_filters(None, None, None, ())
 
 
+def _tracked_item(category_id, item_id):
+    category = SimpleNamespace(id=category_id)
+    group = SimpleNamespace(eve_category=category, eve_category_id=category_id)
+    item = SimpleNamespace(id=item_id, eve_group=group)
+    return SimpleNamespace(item=item, item_id=item_id)
+
+
+def test_tracked_item_filter_can_exclude_selected_types():
+    ship = _tracked_item(category_id=6, item_id=1)
+    implant = _tracked_item(category_id=20, item_id=2)
+    ammunition = _tracked_item(category_id=8, item_id=3)
+
+    result = _filter_tracked_items_by_type(
+        [ship, implant, ammunition],
+        ("ship", "implant"),
+        exclude_matches=True,
+    )
+
+    assert result == [ammunition]
+
+
+def test_tracked_item_filter_keeps_inclusive_behavior_by_default():
+    ship = _tracked_item(category_id=6, item_id=1)
+    implant = _tracked_item(category_id=20, item_id=2)
+    ammunition = _tracked_item(category_id=8, item_id=3)
+
+    result = _filter_tracked_items_by_type(
+        [ship, implant, ammunition],
+        ("ship", "implant"),
+    )
+
+    assert result == [ship, implant]
+
+
 def test_item_filter_normalization_removes_unknown_values_and_duplicates():
     values = ["implant", "complex", "unknown", "t1", "complex", "ship"]
 
@@ -70,6 +107,21 @@ def test_item_filter_controls_render_all_multi_select_options():
     assert html.count("checked") == 3
     assert "dropdown" not in html
     assert html.count("item-filter-btn") == 7
+
+
+def test_item_filter_controls_render_checked_exclusion_switch():
+    html = render_to_string(
+        "markettracker/includes/item_filter_controls.html",
+        {
+            "item_filters": [],
+            "exclude_item_types": True,
+        },
+    )
+
+    assert 'name="exclude_item_types"' in html
+    assert 'value="1"' in html
+    assert "checked" in html
+    assert "Exclude selected types" in html
 
 
 @pytest.mark.parametrize(
