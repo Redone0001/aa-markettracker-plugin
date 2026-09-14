@@ -1,0 +1,39 @@
+{% extends "admin/base_site.html" %}
+{% load admin_urls i18n l10n %}
+
+{% block content %}
+  <form method="post">
+    {% csrf_token %}
+
+    <p>
+      {% blocktrans count counter=queryset|length %}
+        Move the selected tracked item to another location.
+      {% plural %}
+        Move the {{ counter }} selected tracked items to another location.
+      {% endblocktrans %}
+    </p>
+    <p class="help">
+      {% trans "Fetched market-order snapshots for moved items will be cleared and populated again by the next market refresh. Items already tracked at the destination will be skipped." %}
+    </p>
+
+    {{ form.as_p }}
+
+    {% for tracked_item in queryset %}
+      <input
+        type="hidden"
+        name="{{ action_checkbox_name }}"
+        value="{{ tracked_item.pk|unlocalize }}"
+      >
+    {% endfor %}
+    <input type="hidden" name="action" value="move_to_location">
+    <input type="hidden" name="select_across" value="0">
+    <input type="hidden" name="apply" value="1">
+
+    <div class="submit-row">
+      <input type="submit" value="{% trans 'Move tracked items' %}">
+      <a href="{% url opts|admin_urlname:'changelist' %}" class="button cancel-link">
+        {% trans "Cancel" %}
+      </a>
+    </div>
+  </form>
+{% endblock %}

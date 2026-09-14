@@ -1,12 +1,22 @@
 from django import forms
-from django.contrib import admin
+from django.contrib import admin, messages
+from django.contrib.admin.helpers import ACTION_CHECKBOX_NAME
 from django.contrib.auth.models import Group
+from django.core.exceptions import PermissionDenied
 from django.http import HttpResponseRedirect
+from django.template.response import TemplateResponse
 from django.urls import reverse
 from django.utils.translation import gettext_lazy as _
 
-from .models import DiscordMessage, DiscordWebhook, MarketTrackingConfig, TrackedLocation
+from .models import (
+    DiscordMessage,
+    DiscordWebhook,
+    MarketTrackingConfig,
+    TrackedItem,
+    TrackedLocation,
+)
 from .security import redact_discord_webhook_url
+from .tracked_item_moves import move_tracked_items
 
 # ========= DiscordWebhook =========
 
@@ -273,3 +283,122 @@ class TrackedLocationAdmin(admin.ModelAdmin):
         super().save_model(request, obj, form, change)
         if obj.is_default:
             TrackedLocation.objects.exclude(pk=obj.pk).update(is_default=False)
+
+
+class MoveTrackedItemsForm(forms.Form):
+    target_location = forms.ModelChoiceField(
+        queryset=TrackedLocation.objects.none(),
+        label=_("Destination location"),
+    )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["target_location"].queryset = TrackedLocation.objects.filter(
+            is_active=True
+        ).order_by("name")
+
+
+@admin.register(TrackedItem)
+class TrackedItemAdmin(admin.ModelAdmin):
+    actions = ("move_to_location",)
+    list_display = ("item", "location", "desired_quantity", "last_status")
+    list_display_links = None
+    list_filter = ("location", "last_status")
+    list_per_page = 100
+    list_select_related = ("item", "location")
+    ordering = ("location__name", "item__name")
+    search_fields = ("item__name", "location__name")
+    show_full_result_count = False
+
+    def has_module_permission(self, request):
+        return self.has_move_tracked_items_permission(request)
+
+    def has_view_permission(self, request, obj=None):
+        return self.has_move_tracked_items_permission(request)
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+    def has_move_tracked_items_permission(self, request):
+        return request.user.has_perm("markettracker.can_move_tracked_items")
+
+    @admin.action(
+        description=_("Move selected tracked items to another location"),
+        permissions=("move_tracked_items",),
+    )
+    def move_to_location(self, request, queryset):
+        if not self.has_move_tracked_items_permission(request):
+            raise PermissionDenied
+
+        if "apply" in request.POST:
+            form = MoveTrackedItemsForm(request.POST)
+            if form.is_valid():
+                target_location = form.cleaned_data["target_location"]
+                result = move_tracked_items(queryset, target_location)
+
+                moved_items = TrackedItem.objects.filter(
+                    pk__in=result.moved_ids
+                ).select_related("item", "location")
+                for tracked_item in moved_items:
+                    self.log_change(
+                        request,
+                        tracked_item,
+                        str(
+                            _("Moved tracked item to %(location)s.")
+                            % {"location": target_location}
+                        ),
+                    )
+
+                self.message_user(
+                    request,
+                    _(
+                        "%(moved)d tracked items moved to %(location)s; "
+                        "%(snapshots)d old market-order snapshots cleared."
+                    )
+                    % {
+                        "moved": result.moved_count,
+                        "location": target_location,
+                        "snapshots": result.deleted_snapshots,
+                    },
+                    level=messages.SUCCESS if result.moved_count else messages.INFO,
+                )
+                if result.conflict_count:
+                    self.message_user(
+                        request,
+                        _(
+                            "%(count)d tracked items were skipped because the destination "
+                            "already tracks the same item."
+                        )
+                        % {"count": result.conflict_count},
+                        level=messages.WARNING,
+                    )
+                if result.unchanged_count:
+                    self.message_user(
+                        request,
+                        _("%(count)d selected items were already at the destination.")
+                        % {"count": result.unchanged_count},
+                        level=messages.INFO,
+                    )
+                return None
+        else:
+            form = MoveTrackedItemsForm()
+
+        context = {
+            **self.admin_site.each_context(request),
+            "action_checkbox_name": ACTION_CHECKBOX_NAME,
+            "form": form,
+            "opts": self.model._meta,
+            "queryset": queryset,
+            "title": _("Move tracked items to another location"),
+        }
+        return TemplateResponse(
+            request,
+            "admin/markettracker/trackeditem/move_location.html",
+            context,
+        )

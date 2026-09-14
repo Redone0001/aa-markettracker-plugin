@@ -223,6 +223,12 @@ class TrackedItem(models.Model):
     class Meta:
         unique_together = ("item", "location")
         default_permissions = ()
+        permissions = (
+            (
+                "can_move_tracked_items",
+                "Can bulk move tracked items between locations",
+            ),
+        )
 
     def __str__(self):
         return self.item.name

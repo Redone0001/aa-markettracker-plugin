@@ -146,9 +146,31 @@ management:
   deliveries.
 - `markettracker.can_manage_stocks` — configure tracked stock, link the market
   character, and manually enqueue refreshes.
+- `markettracker.can_move_tracked_items` — view tracked items in Django admin
+  and bulk move them between active market locations.
 - `markettracker.can_manage_deliveries` — view and manage all deliveries.
 
 The diagnostics page is restricted to Django superusers.
+
+### Moving tracked items between locations
+
+Users with `markettracker.can_move_tracked_items` can open **Django admin →
+Market Tracker → Tracked items**, select multiple rows, and choose **Move
+selected tracked items to another location** from the Actions menu.
+
+The move resets each moved item's status and removes its fetched market-order
+snapshots from the old location. The next scheduled market refresh populates
+fresh data for the destination. If the destination already tracks an item, that
+row is skipped instead of overwriting or merging it.
+
+After installing the version that introduces this permission, run:
+
+```bash
+python manage.py migrate markettracker
+```
+
+Then assign `markettracker.can_move_tracked_items` through Alliance Auth's group
+or state permission management. Django superusers receive it automatically.
 
 ## Bulk tracked-item import
 
