@@ -141,8 +141,11 @@ html.dark .item-filter-btn {
 }
 :root[data-bs-theme="dark"] .filter-clear-btn,
 :root[data-theme="dark"] .filter-clear-btn,
-html.dark .filter-clear-btn {
+:root[data-theme="darkly"] .filter-clear-btn,
+html.dark .filter-clear-btn,
+.template-dark-mode .filter-clear-btn {
   --bs-btn-color: #f8f9fa;
+  --bs-btn-bg: #6c757d;
   --bs-btn-border-color: #f8f9fa;
   --bs-btn-hover-color: #212529;
   --bs-btn-hover-bg: #f8f9fa;
@@ -150,6 +153,7 @@ html.dark .filter-clear-btn {
   --bs-btn-active-color: #212529;
   --bs-btn-active-bg: #e9ecef;
   --bs-btn-active-border-color: #f8f9fa;
+  opacity: 1;
 }
 </style>
 {% endblock %}

@@ -160,7 +160,11 @@ def test_filter_clear_button_defines_dark_theme_contrast():
     style_block = source[start : source.index("}", start)]
 
     assert ':root[data-theme="dark"] .filter-clear-btn' in style_block
+    assert ':root[data-theme="darkly"] .filter-clear-btn' in style_block
     assert "html.dark .filter-clear-btn" in style_block
+    assert ".template-dark-mode .filter-clear-btn" in style_block
     assert "--bs-btn-color: #f8f9fa" in style_block
+    assert "--bs-btn-bg: #6c757d" in style_block
     assert "--bs-btn-border-color: #f8f9fa" in style_block
     assert "--bs-btn-hover-bg: #f8f9fa" in style_block
+    assert "opacity: 1" in style_block
