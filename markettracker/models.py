@@ -234,6 +234,26 @@ class TrackedItem(models.Model):
         return self.item.name
 
 
+class TrackedItemGroup(models.Model):
+    name = models.CharField(max_length=255)
+    location = models.ForeignKey(
+        TrackedLocation, on_delete=models.CASCADE, related_name="item_groups"
+    )
+    items = models.ManyToManyField("eveuniverse.EveType", related_name="market_tracking_groups")
+    desired_quantity = models.PositiveIntegerField(default=0)
+    last_status = models.CharField(max_length=10, default="OK")
+
+    class Meta:
+        default_permissions = ()
+        ordering = ["name"]
+        constraints = [
+            models.UniqueConstraint(fields=["location", "name"], name="mt_item_group_location_name")
+        ]
+
+    def __str__(self):
+        return self.name
+
+
 class MarketOrderSnapshot(models.Model):
     tracked_item = models.ForeignKey(
         "markettracker.TrackedItem",

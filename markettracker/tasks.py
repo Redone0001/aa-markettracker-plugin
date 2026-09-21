@@ -26,6 +26,7 @@ from .discord import (
     send_contracts_alert,
     send_items_alert,
 )
+from .item_groups import ensure_group_tracking, update_group_statuses
 from .models import (
     ContractDelivery,
     ContractSnapshot,
@@ -335,6 +336,7 @@ def fetch_market_data_for_location(character_id: int, location_pk: int):
             cursor.execute(f"DROP TABLE IF EXISTS `{tmp_table}`;")
 
         # alerts
+        changed_statuses.extend(update_group_statuses(loc.pk, yellow_threshold, red_threshold))
         if changed_statuses:
             send_items_alert(changed_statuses, location_name)
             items_restocked_alert(changed_statuses, location_name)
@@ -577,6 +579,7 @@ def fetch_market_data(character_id: int):
             _update_deliveries(config)
 
 
+        changed_statuses.extend(update_group_statuses(yellow_threshold=yellow_threshold, red_threshold=red_threshold))
         if changed_statuses:
             send_items_alert(changed_statuses, location_name)
             items_restocked_alert(changed_statuses, location_name)
@@ -622,6 +625,7 @@ def fetch_market_data(character_id: int):
 
 
 def _fetch_region_orders_sql(region_id: int, *, table_name: str) -> set[int]:
+    ensure_group_tracking()
     seen_orders: set[int] = set()
     tracked_items = list(TrackedItem.objects.select_related("item").all())
 
@@ -640,6 +644,7 @@ def _fetch_region_orders_sql(region_id: int, *, table_name: str) -> set[int]:
 
 
 def _fetch_structure_orders(structure_id: int, token: Token, table_name: str) -> set[int]:
+    ensure_group_tracking()
     tracked_map = {
         int(t.item_id): t
         for t in TrackedItem.objects.select_related("item").all()
@@ -667,6 +672,7 @@ def _fetch_structure_orders(structure_id: int, token: Token, table_name: str) ->
 
 
 def _fetch_region_orders_sql_for_location(region_id: int, location_pk: int, *, table_name: str) -> set[int]:
+    ensure_group_tracking(location_pk)
     seen_orders: set[int] = set()
     tracked_items = list(
         TrackedItem.objects.filter(location_id=int(location_pk)).select_related("item").all()
@@ -688,6 +694,7 @@ def _fetch_region_orders_sql_for_location(region_id: int, location_pk: int, *, t
 def _fetch_structure_orders_for_location(
     structure_id: int, token: Token, location_pk: int, *, table_name: str
 ) -> set[int]:
+    ensure_group_tracking(location_pk)
     tracked_map = {
         int(t.item_id): t
         for t in TrackedItem.objects.filter(location_id=int(location_pk)).select_related("item").all()

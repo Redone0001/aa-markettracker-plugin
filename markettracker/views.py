@@ -8,8 +8,9 @@ from django.contrib.auth.decorators import login_required, permission_required
 from django.contrib.auth.mixins import LoginRequiredMixin, PermissionRequiredMixin
 from django.core.cache import cache
 from django.core.exceptions import PermissionDenied
+from django.db import transaction
 from django.db.models import Count, Min, Q, Sum
-from django.http import JsonResponse
+from django.http import HttpResponseBadRequest, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
@@ -28,12 +29,14 @@ from .forms import (
     DeliveryQuantityForm,
     TrackedContractForm,
     TrackedItemForm,
+    TrackedItemGroupForm,
 )
 from .item_filters import (
     MODULE_CATEGORY_ID,
     matches_item_filters,
     normalize_item_filters,
 )
+from .item_groups import ensure_group_tracking, group_stock
 from .models import (
     ContractDelivery,
     ContractError,
@@ -46,6 +49,7 @@ from .models import (
     TrackedContract,
     TrackedContractLocation,
     TrackedItem,
+    TrackedItemGroup,
     TrackedLocation,
 )
 from .tasks import fetch_market_data_auto, refresh_contracts
@@ -177,6 +181,9 @@ def item_search(request):
         TrackedItem.objects.filter(location=loc)
         .values_list("item_id", flat=True)
     ) if loc else TrackedItem.objects.none().values_list("item_id", flat=True)
+
+    if request.GET.get("include_tracked") == "1":
+        already_tracked_ids = []
 
     qs = (
         EveType.objects
@@ -546,6 +553,19 @@ def list_items_view(request):
             "need": need,
         })
 
+    groups = TrackedItemGroup.objects.filter(location=loc).prefetch_related("items")
+    matching_ids = {tracked.item_id for tracked in tracked_items}
+    groups_data = []
+    for group in groups:
+        member_ids = {item.pk for item in group.items.all()}
+        if q or selected_item_filters:
+            if not member_ids.intersection(matching_ids):
+                if selected_item_filters or q.casefold() not in group.name.casefold():
+                    continue
+        stock = group_stock(group, yellow_threshold, red_threshold)
+        if not selected_statuses or stock["status"].lower() in selected_statuses:
+            groups_data.append(stock)
+
     if selected_statuses:
         allowed_statuses = {status.upper() for status in selected_statuses}
         items_data = [it for it in items_data if it["status"] in allowed_statuses]
@@ -561,6 +581,7 @@ def list_items_view(request):
         "markettracker/list_items.html",
         {
             "items": items_data,
+            "item_groups": groups_data,
             "location_title": location_title,  # <-- do nagłówka
             "q": q,
             "status_filters": selected_statuses,
@@ -590,6 +611,26 @@ def manage_stock_view(request):
     exclude_item_types = request.GET.get("exclude_item_types") == "1"
     item_filters = _item_filter_options(selected_item_filters)
     bulk_import_form = BulkTrackedItemForm()
+    group_instance = None
+    group_id = request.POST.get("group_id") if request.method == "POST" else request.GET.get("group_edit")
+    if group_id:
+        group_instance = get_object_or_404(TrackedItemGroup, pk=group_id, location=loc)
+    group_form = TrackedItemGroupForm(instance=group_instance, location=loc)
+    if request.method == "POST" and "group_delete" in request.POST:
+        if group_instance is None:
+            return HttpResponseBadRequest()
+        group_instance.delete()
+        messages.success(request, _t("Item group deleted."))
+        return redirect(f"{reverse('markettracker:manage_stock')}?loc={loc.id}")
+    if request.method == "POST" and "group_save" in request.POST:
+        group_form = TrackedItemGroupForm(request.POST, instance=group_instance, location=loc)
+        if group_form.is_valid():
+            with transaction.atomic():
+                group_form.save()
+                ensure_group_tracking(loc.pk)
+            messages.success(request, _t("Item group saved."))
+            return redirect(f"{reverse('markettracker:manage_stock')}?loc={loc.id}")
+
 
     add_mode = "add" in request.GET
     edit_id = request.GET.get("edit_id")
@@ -758,6 +799,8 @@ def manage_stock_view(request):
                 "item_filters": item_filters,
                 "exclude_item_types": exclude_item_types,
                 "bulk_import_form": bulk_import_form,
+            "group_form": group_form,
+            "tracked_item_groups": TrackedItemGroup.objects.filter(location=loc).prefetch_related("items"),
             },
         )
 
@@ -833,6 +876,8 @@ def manage_stock_view(request):
             "item_filters": item_filters,
             "exclude_item_types": exclude_item_types,
             "bulk_import_form": bulk_import_form,
+            "group_form": group_form,
+            "tracked_item_groups": TrackedItemGroup.objects.filter(location=loc).prefetch_related("items"),
             "locations": locations,
             "selected_location": loc,
             "location_title": location_display_name(loc),

@@ -72,6 +72,22 @@
     </form>
   </div>
   <div class="card-body p-0">
+    {% if item_groups %}
+    <div class="table-responsive">
+      <table class="table mb-3">
+        <caption class="caption-top px-3">{% trans "Item groups — combined market stock" %}</caption>
+        <thead><tr><th>{% trans "Group / items" %}</th><th>{% trans "Quantity (current / desired)" %}</th><th>{% trans "Still needed" %}</th><th>{% trans "Status" %}</th></tr></thead>
+        <tbody>{% for entry in item_groups %}
+          <tr class="{% if entry.status == 'RED' %}table-danger{% elif entry.status == 'YELLOW' %}table-warning{% endif %}">
+            <td><strong>{{ entry.group.name }}</strong><div class="small">
+              {% for item in entry.group.items.all %}<a href="{% url 'markettracker:item_detail' type_id=item.pk %}?loc={{ selected_location.pk }}">{{ item.name }}</a>{% if not forloop.last %}, {% endif %}{% endfor %}
+            </div></td>
+            <td>{{ entry.volume_remain }} / {{ entry.desired_quantity }}</td><td>{{ entry.need }}</td><td>{{ entry.status }} ({{ entry.percentage }}%)</td>
+          </tr>
+        {% endfor %}</tbody>
+      </table>
+    </div>
+    {% endif %}
     <div class="table-responsive table-scroll-2">
       <table class="table table-striped mb-0 w-100" id="items-table">
     <thead>

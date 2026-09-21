@@ -177,6 +177,7 @@ html.dark .filter-clear-btn,
             delay: 250,
             data: function (params) {
               return {
+                include_tracked: $items.data("include-tracked") || "0",
                 q: params.term,
                 page: params.page || 1,
                 loc: "{{ selected_location.id }}"

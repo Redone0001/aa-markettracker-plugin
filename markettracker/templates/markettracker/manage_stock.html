@@ -163,6 +163,39 @@
 {% else %}
   <h1 class="mb-4">{% trans "Manage Stock" %}</h1>
 
+  <section class="card my-3">
+    <h2 class="card-header h5">{% trans "Item groups" %}</h2>
+    <div class="card-body">
+      <p>{% trans "A group has one desired quantity shared across all its items at this location." %}</p>
+      <details {% if group_form.errors or group_form.instance.pk %}open{% endif %}>
+        <summary>{% if group_form.instance.pk %}{% trans "Edit group" %}{% else %}{% trans "Add group" %}{% endif %}</summary>
+        <form method="post" action="?loc={{ selected_location.pk }}" class="my-3">
+          {% csrf_token %}
+          {{ group_form.as_p }}
+          {% if group_form.instance.pk %}<input type="hidden" name="group_id" value="{{ group_form.instance.pk }}">{% endif %}
+          <button class="btn btn-primary" name="group_save" type="submit">{% trans "Save group" %}</button>
+          <a class="btn btn-secondary" href="?loc={{ selected_location.pk }}">{% trans "Cancel" %}</a>
+        </form>
+      </details>
+      <div class="table-responsive">
+        <table class="table">
+          <thead><tr><th>{% trans "Group" %}</th><th>{% trans "Items" %}</th><th>{% trans "Desired quantity" %}</th><th>{% trans "Actions" %}</th></tr></thead>
+          <tbody>{% for group in tracked_item_groups %}
+            <tr><td>{{ group.name }}</td><td>{% for item in group.items.all %}{{ item.name }}{% if not forloop.last %}, {% endif %}{% endfor %}</td><td>{{ group.desired_quantity }}</td>
+              <td><a class="btn btn-sm btn-primary" href="?loc={{ selected_location.pk }}&group_edit={{ group.pk }}">{% trans "Edit" %}</a>
+                <form method="post" action="?loc={{ selected_location.pk }}" class="d-inline">
+                  {% csrf_token %}<input type="hidden" name="group_id" value="{{ group.pk }}">
+                  <button class="btn btn-sm btn-outline-danger" type="submit" name="group_delete">{% trans "Delete group" %}</button>
+                </form>
+              </td>
+            </tr>
+          {% empty %}<tr><td colspan="4">{% trans "No item groups yet." %}</td></tr>{% endfor %}</tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+
   <details class="card mt-3" {% if bulk_import_form.errors %}open{% endif %}>
     <summary class="card-header" style="cursor: pointer;">
       <strong>{% trans "Bulk upload tracked items" %}</strong>

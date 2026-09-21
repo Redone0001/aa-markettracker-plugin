@@ -12,6 +12,8 @@ The plugin **does not require** the `structures` app. It uses a numeric
 - A list of tracked items with yellow and red stock thresholds, text search,
   and multi-select item filters for Meta, Tech I, Tech II, Faction, and
   Complex (Deadspace) modules, plus ships and implants.
+- Named item groups with one shared quantity target per location, combined
+  sell-order stock, and group stock alerts.
 - Bulk tracked-item imports with quantity multipliers and optional overwrites.
 - Market-order snapshots for regions and structures.
 - Contract snapshots.
@@ -228,3 +230,20 @@ logs that may contain its previous URL before deploying the remediated version.
 New webhook configuration accepts canonical HTTPS `discord.com` webhook URLs
 only; redirects, credentials, custom ports, query strings, and non-Discord hosts
 are rejected.
+
+## Tracking item groups
+
+In **Manage Stock**, select a location and open **Item groups → Add group**.
+Enter a name, select the items, and set a shared desired quantity. For example,
+a target of 100 with 30 units of one item and 50 of another shows 80 / 100,
+with 20 still needed. Only sell orders at the selected location count.
+
+The market list displays each group’s combined stock and applies the existing
+red/yellow thresholds to its shared target. Groups use the existing item alert
+and restock notification settings. A target of zero disables shortage monitoring.
+Existing individual targets remain independent; newly selected items are fetched
+with an individual target of zero. Editing or deleting a group does not remove
+individual tracking rules. An item can belong to more than one group.
+
+After updating an existing installation, apply the new database migration with
+`python manage.py migrate` and restart the application and Celery workers.

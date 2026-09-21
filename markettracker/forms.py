@@ -13,6 +13,7 @@ from .models import (
     MarketTrackingConfig,
     TrackedContract,
     TrackedItem,
+    TrackedItemGroup,
 )
 
 EXCLUDED_GROUP_IDS = [6, 1, 14]
@@ -324,3 +325,38 @@ class DiscordMessageForm(forms.ModelForm):
         if commit:
             inst.save()
         return inst
+
+
+class TrackedItemGroupForm(forms.ModelForm):
+    class Meta:
+        model = TrackedItemGroup
+        fields = ["name", "items", "desired_quantity"]
+        widgets = {
+            "name": forms.TextInput(attrs={"class": "form-control"}),
+            "items": forms.SelectMultiple(attrs={
+                "class": "select-search-item",
+                "data-include-tracked": "1",
+                "data-placeholder": "Search and select items…",
+            }),
+            "desired_quantity": forms.NumberInput(attrs={"class": "form-control", "min": 0}),
+        }
+        help_texts = {
+            "desired_quantity": _("Shared target for the sum of all selected items on the market at this location."),
+            "items": _("Select multiple items. Existing individual targets remain independent."),
+        }
+
+    def __init__(self, *args, location, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.instance.location = location
+        ids = self.instance.items.values_list("pk", flat=True) if self.instance.pk else []
+        if self.is_bound:
+            ids = [int(value) for value in self.data.getlist(self.add_prefix("items")) if str(value).isdigit()]
+        self.fields["items"].queryset = EveType.objects.filter(
+            pk__in=ids, published=True, name__isnull=False
+        )
+
+    def clean_name(self):
+        name = self.cleaned_data["name"].strip()
+        if TrackedItemGroup.objects.filter(location=self.instance.location, name=name).exclude(pk=self.instance.pk).exists():
+            raise forms.ValidationError(_("A group with this name already exists at this location."))
+        return name

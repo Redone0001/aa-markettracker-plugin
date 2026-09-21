@@ -138,7 +138,7 @@ def send_items_alert(changed_items, location_name: str):
 
     fields = []
     for item, _old_status, new_status, percent, total, desired in filtered:
-        name = str(getattr(item.item, "name", "Unknown"))[:256]
+        name = str(getattr(item, "name", None) or getattr(getattr(item, "item", None), "name", "Unknown"))[:256]
         value = f"**{new_status}** ({percent}%) – {total}/{desired}"
         fields.append({
             "name": name,
@@ -185,7 +185,7 @@ def items_restocked_alert(changed_items, location_name: str):
 
     fields = []
     for item, old_status, _new_status, percent, total, desired in filtered:
-        name = str(getattr(item.item, "name", "Unknown"))[:256]
+        name = str(getattr(item, "name", None) or getattr(getattr(item, "item", None), "name", "Unknown"))[:256]
         value = f"✅ **RESTOCKED** ({percent}%) – {total}/{desired} (before: {old_status})"
         fields.append({
             "name": name,
