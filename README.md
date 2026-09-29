@@ -247,3 +247,25 @@ individual tracking rules. An item can belong to more than one group.
 
 After updating an existing installation, apply the new database migration with
 `python manage.py migrate` and restart the application and Celery workers.
+
+## Jita prices and markup
+
+Set `JANICE_API_KEY = 'your-key'` in Alliance Auth's `local.py` to enable the
+**Jita sell price (markup %)** column on the item list. The key stays on the
+server. Prices come from Janice's [batch pricing API](https://janice.e-351.com/api/rest/docs/index.html)
+(`POST /api/rest/v2/pricer`, market 2), using immediate sell prices. All tracked
+item types at the selected location are requested together in one call.
+
+Markup is `(local minimum sell price / Jita sell price - 1) × 100`:
+100 ISK in Jita and 120 ISK locally means +20%. Use the minimum and maximum
+markup fields independently or together; bounds are inclusive and can be
+negative. These filters apply to individual items, not group stock totals.
+Items missing either price are excluded only while a markup filter is active.
+
+Prices are refreshed on demand after 15 minutes. API errors, timeouts, missing
+items, and invalid prices retain the last good cached value (labelled **Cached**
+when older than 15 minutes). Without a previous value, the column shows **No data**.
+Refresh attempts are throttled to once per minute across locations. Last good
+prices live in Django's cache until eviction or cache clearing; no API key or
+an unavailable cache entry simply means no new reference price. No migration
+is needed for this feature.

@@ -360,3 +360,21 @@ class TrackedItemGroupForm(forms.ModelForm):
         if TrackedItemGroup.objects.filter(location=self.instance.location, name=name).exclude(pk=self.instance.pk).exists():
             raise forms.ValidationError(_("A group with this name already exists at this location."))
         return name
+
+
+class MarkupFilterForm(forms.Form):
+    markup_min = forms.DecimalField(
+        label=_("Minimum markup (%)"), required=False, max_digits=12, decimal_places=2,
+        widget=forms.NumberInput(attrs={"class": "form-control form-control-sm", "step": "0.01"}),
+    )
+    markup_max = forms.DecimalField(
+        label=_("Maximum markup (%)"), required=False, max_digits=12, decimal_places=2,
+        widget=forms.NumberInput(attrs={"class": "form-control form-control-sm", "step": "0.01"}),
+    )
+
+    def clean(self):
+        data = super().clean()
+        minimum, maximum = data.get("markup_min"), data.get("markup_max")
+        if minimum is not None and maximum is not None and minimum > maximum:
+            raise forms.ValidationError(_("Minimum markup must not exceed maximum markup."))
+        return data

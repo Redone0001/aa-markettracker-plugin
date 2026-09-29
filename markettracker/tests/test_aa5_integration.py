@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 def test_package_is_marked_as_a_beta_release():
-    assert __version__ == "2.0.0b1"
+    assert __version__ == "2.0.1b1"
 
 
 def test_project_metadata_targets_alliance_auth_5():

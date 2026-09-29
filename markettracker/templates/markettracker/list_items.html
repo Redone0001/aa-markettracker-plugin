@@ -65,6 +65,16 @@
         style="min-width: 180px;"
         placeholder="{% trans 'Search item...' %}"
       >
+      <div>
+        <label for="{{ markup_form.markup_min.id_for_label }}" class="small">{{ markup_form.markup_min.label }}</label>
+        {{ markup_form.markup_min }}{{ markup_form.markup_min.errors }}
+      </div>
+      <div>
+        <label for="{{ markup_form.markup_max.id_for_label }}" class="small">{{ markup_form.markup_max.label }}</label>
+        {{ markup_form.markup_max }}{{ markup_form.markup_max.errors }}
+      </div>
+      {{ markup_form.non_field_errors }}
+      <span class="small text-muted">{% trans "Markup compares individual item sell prices with Jita. Items without prices are excluded when filtering." %}</span>
       <button class="btn btn-primary btn-sm" type="submit">{% trans "Apply filters" %}</button>
       <a class="btn btn-outline-secondary filter-clear-btn btn-sm" href="?loc={{ selected_location.id }}">
         {% trans "Clear" %}
@@ -96,6 +106,7 @@
             <th>{% trans "Item Name" %}</th>
             <th>{% trans "Quantity (current / desired)" %}</th>
             <th>{% trans "Minimum Price" %}</th>
+            <th>{% trans "Jita sell price (markup %)" %}</th>
             <th class="text-end">
               <button id="btn-copy-multibuy" class="btn btn-primary btn-sm ms-2">
                 {% trans "Copy to Multibuy" %}
@@ -118,6 +129,13 @@
               </td>
               <td>{{ entry.volume_remain|default:"0" }} / {{ entry.desired_quantity|default:"—" }}</td>
               <td>{% if entry.price %}{{ entry.price|compact_isk }}{% else %}<span class="text-muted">{% trans "No data" %}</span>{% endif %}</td>
+              <td>
+                {% if entry.jita_price %}
+                  {{ entry.jita_price|compact_isk }}
+                  {% if entry.markup != None %}({% if entry.markup > 0 %}+{% endif %}{{ entry.markup|floatformat:2 }}%){% else %}(—){% endif %}
+                  {% if entry.jita_stale %}<span class="badge bg-secondary">{% trans "Cached" %}</span>{% endif %}
+                {% else %}<span class="text-muted">{% trans "No data" %}</span>{% endif %}
+              </td>
               <td class="text-end">
                   <a href="{% url 'markettracker:create_delivery' entry.item.id %}" class="btn btn-primary btn-sm btn-deliver" data-pending="{{ entry.pending_count }}" data-pqty="{{ item.pending_qty }}">
                       <i class="fa fa-truck"></i> {% trans "Deliver" %}
@@ -126,7 +144,7 @@
             </tr>
         {% empty %}
             <tr>
-                <td colspan="5">{% trans "No items to display." %}</td>
+                <td colspan="6">{% trans "No items to display." %}</td>
             </tr>
         {% endfor %}
     </tbody>

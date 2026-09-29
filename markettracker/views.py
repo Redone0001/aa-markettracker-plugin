@@ -2,6 +2,7 @@ import json
 import logging
 from collections import OrderedDict
 from datetime import date, timedelta
+from decimal import Decimal
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required, permission_required
@@ -27,6 +28,7 @@ from .forms import (
     BulkTrackedItemForm,
     ContractDeliveryQuantityForm,
     DeliveryQuantityForm,
+    MarkupFilterForm,
     TrackedContractForm,
     TrackedItemForm,
     TrackedItemGroupForm,
@@ -37,6 +39,7 @@ from .item_filters import (
     normalize_item_filters,
 )
 from .item_groups import ensure_group_tracking, group_stock
+from .janice import get_jita_prices
 from .models import (
     ContractDelivery,
     ContractError,
@@ -511,9 +514,17 @@ def list_items_view(request):
         exclude_matches=exclude_item_types,
     )
 
+    jita_prices = get_jita_prices(
+        TrackedItem.objects.filter(location=loc).values_list("item_id", flat=True)
+    )
+    markup_form = MarkupFilterForm(request.GET)
+    markup_valid = markup_form.is_valid()
+    markup_min = markup_form.cleaned_data.get("markup_min") if markup_valid else None
+    markup_max = markup_form.cleaned_data.get("markup_max") if markup_valid else None
+
     items_data = []
     for tracked in tracked_items:
-        orders = MarketOrderSnapshot.objects.filter(tracked_item=tracked)
+        orders = MarketOrderSnapshot.objects.filter(tracked_item=tracked, is_buy_order=False)
         agg = orders.aggregate(min_price=Min("price"), total_vol=Sum("volume_remain"))
         min_price = agg["min_price"]
         total_volume = agg["total_vol"] or 0
@@ -539,10 +550,23 @@ def list_items_view(request):
 
         need = max(desired - int(total_volume or 0), 0)
 
+        quote = jita_prices.get(tracked.item_id, {})
+        jita_price = quote.get("price")
+        markup = None
+        if jita_price and min_price is not None:
+            markup = (Decimal(str(min_price)) / Decimal(str(jita_price)) - 1) * 100
+        if markup_min is not None and (markup is None or markup < markup_min):
+            continue
+        if markup_max is not None and (markup is None or markup > markup_max):
+            continue
+
         items_data.append({
             "item": tracked.item,
             "desired_quantity": tracked.desired_quantity,
             "price": min_price,
+            "jita_price": jita_price,
+            "jita_stale": quote.get("stale", False),
+            "markup": markup,
             "volume_remain": total_volume,
             "status": computed_status,
             "percentage": percentage,
@@ -581,6 +605,7 @@ def list_items_view(request):
         "markettracker/list_items.html",
         {
             "items": items_data,
+            "markup_form": markup_form,
             "item_groups": groups_data,
             "location_title": location_title,  # <-- do nagłówka
             "q": q,
