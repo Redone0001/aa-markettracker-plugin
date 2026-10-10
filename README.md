@@ -26,7 +26,7 @@ The plugin **does not require** the `structures` app. It uses a numeric
 - Python `>=3.10,<3.15` (including Python 3.11)
 - Alliance Auth `>=5.0,<6` (tested with 5.0.1 and 5.2.0)
 - Django `>=5.2,<6`
-- django-esi `>=9.4,<10`
+- django-esi `>=9.4,<11`
 - django-eveonline-sde `>=0.1,<1`
 - Celery `>=5.5,<6` and django-celery-beat `>=2.8`
 - django-eveuniverse `>=2,<3`
@@ -34,6 +34,10 @@ The plugin **does not require** the `structures` app. It uses a numeric
 
 Version 2.0 and later support Alliance Auth 5 only. Alliance Auth 4 installations
 must upgrade Alliance Auth before installing this release.
+
+Django-ESI 10.0.0 is tested with django-eveuniverse 2.2.0. When upgrading to
+Django-ESI 10, also upgrade django-eveuniverse: version 2.1.0 requires Django-ESI
+below 10.
 
 ## Installation
 
