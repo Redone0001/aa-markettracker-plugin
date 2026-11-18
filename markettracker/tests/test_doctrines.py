@@ -332,7 +332,7 @@ def test_private_doctrine_routes_and_multibuy_are_protected(
     data.plan.save()
     page = client.get(list_url)
     assert data.doctrine.name in page.content.decode()
-    assert '<details class="card mb-3">' in page.content.decode()
+    assert '<details class="card doctrine-card"' in page.content.decode()
     result = client.post(buy_url, {"mode": "all", "amount": 2})
     assert result.status_code == 200
     assert "Hull\t2" in result.json()["text"]

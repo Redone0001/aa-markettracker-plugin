@@ -293,6 +293,8 @@ ships and bottlenecks, the number of complete fits available, and the cheapest
 complete-fit price in compact ISK. Only sell orders at the selected tracked
 location count. The price consumes the cheapest order stacks first, respecting
 available quantities; it is unavailable if a complete fit cannot be assembled.
+Compact ship rows inherit the active Alliance Auth theme. Click a fit name or
+its components icon to see bottlenecks and change the Buy all quantity.
 Coverage is the greatest whole percentage of all the doctrine's ship targets
 that available stock can support, rounded conservatively. Shared modules and
 overlapping substitution groups cannot spend the same stock twice. Each ship's

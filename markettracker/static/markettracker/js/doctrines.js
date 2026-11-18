@@ -1,4 +1,27 @@
 (() => {
+  function setPanelExpanded(panel, expanded) {
+    panel.hidden = !expanded;
+    document.querySelectorAll('[data-doctrine-toggle]').forEach(control => {
+      if (control.dataset.doctrineToggle === panel.id) {
+        control.setAttribute('aria-expanded', String(expanded));
+      }
+    });
+  }
+  document.querySelectorAll('[data-doctrine-toggle]').forEach(button => {
+    button.addEventListener('click', () => {
+      const panel = document.getElementById(button.dataset.doctrineToggle);
+      if (!panel) return;
+      setPanelExpanded(panel, panel.hidden);
+    });
+  });
+  document.querySelectorAll('.doctrine-buy-amount').forEach(input => {
+    input.addEventListener('invalid', () => {
+      const panel = input.closest('.doctrine-components');
+      const doctrine = input.closest('.doctrine-card');
+      if (doctrine) doctrine.open = true;
+      if (panel) setPanelExpanded(panel, true);
+    });
+  });
   const status = document.getElementById('doctrine-buy-status');
   document.querySelectorAll('.doctrine-buy-form').forEach(form => {
     form.addEventListener('submit', async event => {

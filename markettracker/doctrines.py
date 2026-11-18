@@ -319,6 +319,9 @@ def doctrine_stock(plan, groups, orders):
                 "available": count,
                 "price": cost if not any(missing_one) else None,
                 "bottlenecks": bottlenecks,
+                "progress": min(count * 100 // target.desired_quantity, 100),
+                "stock_state": _stock_state(count * 100 // target.desired_quantity),
+                "missing_components": sum(line["need"] > 0 for line in bottlenecks),
             }
         )
     # Coverage is the attainable proportion of ALL doctrine target requirements.
@@ -340,7 +343,21 @@ def doctrine_stock(plan, groups, orders):
             low = middle
         else:
             high = middle - 1
-    return {"plan": plan, "ships": rows, "coverage": low if combined else 100}
+    coverage = low if combined else 100
+    return {
+        "plan": plan,
+        "ships": rows,
+        "coverage": coverage,
+        "stock_state": _stock_state(coverage),
+        "ready_fits": sum(row["available"] >= row["target"].desired_quantity for row in rows),
+        "target_ships": sum(row["target"].desired_quantity for row in rows),
+    }
+
+
+def _stock_state(percentage):
+    if percentage >= 100:
+        return "ready"
+    return "critical" if percentage <= 25 else "low"
 
 
 def multibuy(target, groups, orders, *, missing=False, amount=1):

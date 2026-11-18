@@ -1,0 +1,144 @@
+/* All colors come from the active Alliance Auth / Bootstrap theme. */
+.doctrine-market {
+  container: doctrine-market / inline-size;
+  --doctrine-muted: var(--bs-secondary-color, var(--bs-secondary));
+  --doctrine-border: var(--bs-border-color, var(--bs-card-border-color));
+  --doctrine-ready: color-mix(in srgb, var(--bs-success) 65%, var(--bs-body-color));
+  --doctrine-low: color-mix(in srgb, var(--bs-warning) 50%, var(--bs-body-color));
+  --doctrine-critical: color-mix(in srgb, var(--bs-danger) 65%, var(--bs-body-color));
+}
+.doctrine-market .btn-outline-secondary {
+  --bs-btn-color: var(--bs-body-color);
+  --bs-btn-border-color: color-mix(in srgb, var(--bs-body-color) 25%, transparent);
+  --bs-btn-hover-color: var(--bs-body-color);
+  --bs-btn-hover-bg: color-mix(in srgb, var(--bs-body-color) 10%, transparent);
+  --bs-btn-hover-border-color: var(--bs-body-color);
+  --bs-btn-active-color: var(--bs-body-color);
+  --bs-btn-active-bg: color-mix(in srgb, var(--bs-body-color) 15%, transparent);
+  --bs-btn-active-border-color: var(--bs-body-color);
+  --bs-btn-disabled-color: var(--bs-secondary-color, var(--bs-secondary));
+}
+.doctrine-market .doctrine-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: .75rem;
+  margin-bottom: .75rem;
+}
+.doctrine-market .doctrine-location-form { max-width: 18rem; }
+.doctrine-market .doctrine-help { margin-bottom: 1rem; }
+.doctrine-market .doctrine-help summary { cursor: pointer; }
+.doctrine-market .doctrine-card { --doctrine-border: var(--bs-card-border-color, var(--bs-border-color)); margin-bottom: .75rem; overflow: hidden; }
+.doctrine-market .doctrine-summary {
+  display: grid;
+  grid-template-columns: .6rem 1.25rem minmax(0, 1fr) 8rem;
+  gap: .75rem;
+  align-items: center;
+  padding: .8rem 1rem;
+  background: var(--bs-card-cap-bg);
+  cursor: pointer;
+  list-style: none;
+}
+.doctrine-market .doctrine-summary::-webkit-details-marker { display: none; }
+.doctrine-market .doctrine-chevron { font-size: .6rem; color: var(--doctrine-muted); }
+.doctrine-market .doctrine-card[open] > .doctrine-summary .doctrine-chevron { transform: rotate(90deg); }
+.doctrine-market .doctrine-summary:focus-visible,
+.doctrine-market .doctrine-fit-identity:focus-visible {
+  outline: 2px solid var(--bs-primary);
+  outline-offset: -2px;
+}
+.doctrine-market .doctrine-heading { min-width: 0; }
+.doctrine-market .doctrine-heading-title { display: flex; align-items: center; flex-wrap: wrap; gap: .45rem; }
+.doctrine-market .doctrine-heading-title > .text-truncate { max-width: 100%; }
+.doctrine-market .doctrine-state { font-size: .65rem; font-weight: 500; border: 1px solid currentColor; }
+.doctrine-market .doctrine-state-ready { color: var(--doctrine-ready); background: color-mix(in srgb, var(--bs-success) 12%, transparent); }
+.doctrine-market .doctrine-state-low { color: var(--doctrine-low); background: color-mix(in srgb, var(--bs-warning) 12%, transparent); }
+.doctrine-market .doctrine-state-critical { color: var(--doctrine-critical); background: color-mix(in srgb, var(--bs-danger) 12%, transparent); }
+.doctrine-market .doctrine-meta { display: flex; flex-wrap: wrap; gap: .8rem; font-size: .75rem; color: var(--doctrine-muted); margin-top: .2rem; }
+.doctrine-market .doctrine-coverage { font-size: .8rem; text-align: right; }
+.doctrine-market .doctrine-progress { height: .35rem; border-radius: 1rem; margin-top: .4rem; background: color-mix(in srgb, var(--bs-body-color) 12%, transparent); }
+.doctrine-market .doctrine-fill-ready { background-color: var(--bs-success); }
+.doctrine-market .doctrine-fill-low { background-color: var(--bs-warning); }
+.doctrine-market .doctrine-fill-critical { background-color: var(--bs-danger); }
+.doctrine-market .doctrine-stock-ready { color: var(--doctrine-ready); }
+.doctrine-market .doctrine-stock-low { color: var(--doctrine-low); }
+.doctrine-market .doctrine-stock-critical { color: var(--doctrine-critical); }
+.doctrine-market .doctrine-fit { border-top: 1px solid var(--doctrine-border); }
+.doctrine-market .doctrine-fit-row {
+  display: grid;
+  grid-template-columns: minmax(12rem, 1fr) minmax(7rem, 10rem) 8rem 16rem;
+  align-items: center;
+  gap: 1rem;
+  min-height: 3.5rem;
+  padding: .55rem 1rem;
+}
+.doctrine-market .doctrine-fit-identity {
+  display: flex;
+  align-items: center;
+  gap: .65rem;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+.doctrine-market .doctrine-ship-icon { flex-shrink: 0; border-radius: var(--bs-border-radius-sm, .25rem); object-fit: contain; background: var(--bs-card-cap-bg); }
+.doctrine-market .doctrine-fit-label { display: block; min-width: 0; }
+.doctrine-market .doctrine-fit-name { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .85rem; font-weight: 500; }
+.doctrine-market .doctrine-fit-identity:hover .doctrine-fit-name { text-decoration: underline; }
+.doctrine-market .doctrine-fit-subtitle { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .72rem; color: var(--doctrine-muted); margin-top: .15rem; }
+.doctrine-market .doctrine-fit-count { font-variant-numeric: tabular-nums; font-size: .8rem; }
+.doctrine-market .doctrine-fit-price { display: flex; flex-direction: column; text-align: right; font-size: .8rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.doctrine-market .doctrine-fit-actions,
+.doctrine-market .doctrine-buy-form { display: flex; align-items: center; justify-content: flex-end; gap: .3rem; }
+.doctrine-market .doctrine-fit-actions .btn { padding: .25rem .45rem; font-size: .72rem; white-space: nowrap; }
+.doctrine-market .doctrine-buy-form .btn { display: inline-flex; align-items: center; gap: .35rem; }
+.doctrine-market .doctrine-components-button { border-color: transparent; color: var(--doctrine-muted); }
+.doctrine-market .doctrine-components-button[aria-expanded="true"] { color: var(--bs-primary); border-color: var(--bs-primary); }
+.doctrine-market .doctrine-components { padding: .75rem 1rem 1rem 3.65rem; border-top: 1px solid var(--doctrine-border); background: var(--bs-card-cap-bg); }
+.doctrine-market .doctrine-components .table { --bs-table-bg: transparent; font-size: .75rem; }
+.doctrine-market .doctrine-components th { color: var(--doctrine-muted); font-weight: 500; white-space: nowrap; }
+.doctrine-market .doctrine-buy-amount { width: 5rem; }
+.doctrine-market .doctrine-footer { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: .5rem; padding: .6rem 1rem; border-top: 1px solid var(--doctrine-border); font-size: .72rem; }
+.doctrine-market .doctrine-footer a { text-decoration: none; }
+.doctrine-market .doctrine-footer a:hover { text-decoration: underline; }
+@media (max-width: 991.98px) {
+  .doctrine-market .doctrine-fit-row { grid-template-columns: minmax(0, 1fr) 14rem; column-gap: .75rem; row-gap: .5rem; }
+  .doctrine-market .doctrine-fit-price { text-align: left; padding-left: 2.65rem; flex-direction: row; align-items: baseline; gap: .4rem; }
+  .doctrine-market .doctrine-fit-actions { grid-column: 2; grid-row: 2; }
+}
+@container doctrine-market (max-width: 52rem) {
+  .doctrine-market .doctrine-fit-row { grid-template-columns: minmax(0, 1fr) 14rem; column-gap: .75rem; row-gap: .5rem; }
+  .doctrine-market .doctrine-fit-price { text-align: left; padding-left: 2.65rem; flex-direction: row; align-items: baseline; gap: .4rem; }
+  .doctrine-market .doctrine-fit-actions { grid-column: 2; grid-row: 2; }
+}
+@media (max-width: 575.98px) {
+  .doctrine-market .doctrine-summary { grid-template-columns: .5rem minmax(0, 1fr) 5.5rem; gap: .5rem; padding: .75rem; }
+  .doctrine-market .doctrine-folder { display: none; }
+  .doctrine-market .doctrine-heading-title { font-size: .85rem; }
+  .doctrine-market .doctrine-meta { gap: .25rem .6rem; }
+  .doctrine-market .doctrine-fit-row { grid-template-columns: minmax(0, 1fr) auto; padding: .65rem .75rem; }
+  .doctrine-market .doctrine-fit-identity { grid-column: 1 / -1; }
+  .doctrine-market .doctrine-fit-stock { grid-column: 1; grid-row: 2; }
+  .doctrine-market .doctrine-fit-price { grid-column: 2; grid-row: 2; text-align: right; padding: 0; flex-direction: column; gap: 0; }
+  .doctrine-market .doctrine-fit-actions { grid-column: 1 / -1; grid-row: 3; }
+  .doctrine-market .doctrine-components { padding: .75rem; }
+  .doctrine-market .doctrine-location-form { max-width: 100%; }
+}
+@container doctrine-market (max-width: 34rem) {
+  .doctrine-market .doctrine-summary { grid-template-columns: .5rem minmax(0, 1fr) 5.5rem; gap: .5rem; padding: .75rem; }
+  .doctrine-market .doctrine-folder { display: none; }
+  .doctrine-market .doctrine-heading-title { font-size: .85rem; }
+  .doctrine-market .doctrine-meta { gap: .25rem .6rem; }
+  .doctrine-market .doctrine-fit-row { grid-template-columns: minmax(0, 1fr) auto; padding: .65rem .75rem; }
+  .doctrine-market .doctrine-fit-identity { grid-column: 1 / -1; }
+  .doctrine-market .doctrine-fit-stock { grid-column: 1; grid-row: 2; }
+  .doctrine-market .doctrine-fit-price { grid-column: 2; grid-row: 2; text-align: right; padding: 0; flex-direction: column; gap: 0; }
+  .doctrine-market .doctrine-fit-actions { grid-column: 1 / -1; grid-row: 3; }
+  .doctrine-market .doctrine-components { padding: .75rem; }
+  .doctrine-market .doctrine-location-form { max-width: 100%; }
+}
