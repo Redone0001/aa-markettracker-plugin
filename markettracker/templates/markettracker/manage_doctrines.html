@@ -1,27 +1,49 @@
-{% extends "markettracker/base.html" %}
+{% extends "markettracker/manage_base.html" %}
 {% load i18n %}
-{% block content %}
-<div class="d-flex flex-wrap gap-3 justify-content-between align-items-center mb-3"><h1>{% trans "Manage doctrine seeding" %}</h1><a class="btn btn-secondary" href="{% url 'markettracker:doctrine_list' %}?loc={{ selected_location.pk }}">{% trans "Market coverage" %}</a></div>
-<form method="get" class="mb-3"><label for="manage-doctrine-location">{% trans "Location" %}</label><select id="manage-doctrine-location" name="loc" class="form-select w-auto" onchange="this.form.submit()">{% for location in locations %}<option value="{{ location.pk }}" {% if location.pk == selected_location.pk %}selected{% endif %}>{{ location.display_name }}</option>{% endfor %}</select></form>
-<p>{% trans "Select only the doctrines or fits to seed here. Tracking is private by default. Sharing makes the doctrine and its fits visible to everyone with market access, including fits restricted in the Fittings module." %}</p>
-<p class="text-muted">{% trans "Fitting contents and doctrine membership synchronize during market refreshes. Use Sync now after editing a doctrine to update tracking immediately; fresh stock arrives with the next market refresh." %}</p>
-<div class="card mb-3"><h2 class="card-header h5">{% if editing %}{% trans "Edit tracking" %}: {{ editing }}{% else %}{% trans "Track a doctrine or fit" %}{% endif %}</h2><div class="card-body">
-<form method="post" action="?loc={{ selected_location.pk }}">{% csrf_token %}{% if editing %}<input type="hidden" name="plan_id" value="{{ editing.pk }}">{% endif %}{{ tracking_form.as_p }}<button class="btn btn-primary" name="save" type="submit">{% trans "Save tracking" %}</button> <a class="btn btn-secondary" href="?loc={{ selected_location.pk }}">{% trans "New tracking" %}</a></form>
-</div></div>
-{% if editing %}
-<div class="card mb-3"><h2 class="card-header h5">{% trans "Ship quantities" %}</h2><div class="card-body">
-<form method="post" action="?loc={{ selected_location.pk }}">{% csrf_token %}<input type="hidden" name="plan_id" value="{{ editing.pk }}">{{ target_formset.management_form }}{{ target_formset.non_form_errors }}
-{% for form in target_formset %}<div class="mb-3">{{ form.id }}<label for="{{ form.desired_quantity.id_for_label }}"><strong>{{ form.instance.fitting.ship_type.name }} — {{ form.instance.fitting.name }}</strong></label> {{ form.desired_quantity }}{{ form.errors }}</div>{% endfor %}
-<button class="btn btn-primary" name="save_targets" type="submit">{% trans "Save ship targets" %}</button></form>
-</div></div>
+{% block management_content %}
+{% if show_tracking_form %}
+  <div class="stock-section-heading"><div><a class="stock-back" href="{{ return_url }}"><i class="fa-solid fa-arrow-left" aria-hidden="true"></i> {% trans "Back to doctrines" %}</a><h2 class="h5 mb-0">{% if editing %}{% trans "Edit tracking" %}: {% if editing.doctrine_id %}{{ editing.doctrine.name }}{% else %}{{ editing.fitting.name }}{% endif %}{% else %}{% trans "Track a doctrine or fit" %}{% endif %}</h2></div></div>
+  <div {% if editing %}class="stock-editor-grid"{% endif %}>
+    <section class="card stock-editor">
+      {% if editing %}<h3 class="stock-card-heading mb-0">{% trans "Tracking settings" %}</h3>{% endif %}
+      <div class="card-body"><form method="post" action="{{ return_url }}" data-doctrine-source-form>
+        {% csrf_token %}{% include "markettracker/includes/management/return_fields.html" %}
+        {% if editing %}<input type="hidden" name="plan_id" value="{{ editing.pk }}">{% endif %}
+        {% if tracking_form.non_field_errors %}<div class="alert alert-danger small">{{ tracking_form.non_field_errors }}</div>{% endif %}
+        {% for field in tracking_form %}{% include "markettracker/includes/management/field.html" with source_field=True %}{% endfor %}
+        <div class="stock-form-actions"><button class="btn btn-primary btn-sm" name="save" type="submit">{% trans "Save tracking" %}</button><a class="btn btn-outline-secondary btn-sm" href="{{ return_url }}">{% trans "Cancel" %}</a></div>
+      </form></div>
+    </section>
+    {% if editing %}
+      <section class="card stock-editor"><h3 class="stock-card-heading mb-0">{% trans "Ship targets" %}</h3><div class="card-body">
+        <p class="small text-muted">{% trans "Set a quantity for each fit at this location. Zero pauses a fit." %}</p>
+        <form method="post" action="{{ return_url }}">
+          {% csrf_token %}{% include "markettracker/includes/management/return_fields.html" %}<input type="hidden" name="plan_id" value="{{ editing.pk }}">{{ target_formset.management_form }}
+          {% if target_formset.non_form_errors %}<div class="alert alert-danger small">{{ target_formset.non_form_errors }}</div>{% endif %}
+          {% for form in target_formset %}
+            {{ form.id }}{{ form.id.errors }}
+            <div class="stock-ship-target">
+              <label for="{{ form.desired_quantity.id_for_label }}" class="stock-record"><img src="https://images.evetech.net/types/{{ form.instance.fitting.ship_type_id }}/icon?size=64" width="32" height="32" alt="" loading="lazy"><span><span class="stock-record-name">{{ form.instance.fitting.name }}</span><span class="stock-record-meta d-block">{{ form.instance.fitting.ship_type.name }}</span></span></label>
+              <div>{{ form.desired_quantity }}{% for error in form.desired_quantity.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}</div>
+            </div>
+          {% empty %}<p class="text-muted small">{% trans "No fits in this doctrine yet. Sync after adding fits in the Fittings module." %}</p>{% endfor %}
+          <div class="stock-form-actions"><button class="btn btn-primary btn-sm" name="save_targets" type="submit">{% trans "Save ship targets" %}</button></div>
+        </form>
+      </div></section>
+    {% endif %}
+  </div>
+{% else %}
+  <div class="stock-section-heading"><div><h2 class="h5 mb-1">{% trans "Tracked doctrines and fits" %}</h2><p class="text-muted small mb-0">{% trans "Choose which fits to seed and who can see them." %}</p></div><div class="stock-heading-actions"><form method="post" action="{{ return_url }}">{% csrf_token %}{% include "markettracker/includes/management/return_fields.html" %}<button class="btn btn-outline-secondary btn-sm" name="sync" type="submit"><i class="fa-solid fa-rotate" aria-hidden="true"></i> {% trans "Sync fits" %}</button></form><a class="btn btn-primary btn-sm" href="{% querystring add=1 %}"><i class="fa-solid fa-plus" aria-hidden="true"></i> {% trans "Track doctrine / fit" %}</a></div></div>
+  <section class="card stock-list">
+    <div class="table-responsive"><table class="table stock-table align-middle mb-0"><thead><tr><th>{% trans "Doctrine / fit" %}</th><th>{% trans "Visibility" %}</th><th class="text-end">{% trans "Fits" %}</th><th class="text-end">{% trans "Default target" %}</th><th class="text-end">{% trans "Actions" %}</th></tr></thead><tbody>
+      {% for plan in tracked_doctrines %}<tr><td><div class="stock-record"><span class="stock-record-icon"><i class="fa-solid {% if plan.doctrine_id %}fa-folder-open{% else %}fa-ship{% endif %}" aria-hidden="true"></i></span><div><span class="stock-record-name">{% if plan.doctrine_id %}{{ plan.doctrine.name }}{% else %}{{ plan.fitting.name }}{% endif %}</span><div class="stock-record-meta">{% if plan.doctrine_id %}{% trans "Doctrine" %}{% else %}{% trans "Standalone fit" %}{% endif %}</div></div></div></td><td><span class="stock-source ms-0">{% if plan.is_shared %}{% trans "Shared" %}{% else %}<i class="fa-solid fa-lock me-1" aria-hidden="true"></i>{% trans "Private" %}{% endif %}</span></td><td class="text-end stock-number">{{ plan.fit_targets.count }}</td><td class="text-end stock-number">{{ plan.default_quantity }}</td><td><div class="stock-row-actions"><a class="btn btn-outline-secondary btn-sm" href="{% querystring edit=plan.pk %}">{% trans "Edit targets" %}</a><form method="post" action="{{ return_url }}">{% csrf_token %}{% include "markettracker/includes/management/return_fields.html" %}<input type="hidden" name="plan_id" value="{{ plan.pk }}"><button class="btn btn-outline-danger btn-sm" name="delete" type="submit">{% trans "Remove" %}</button></form></div></td></tr>
+      {% empty %}<tr><td colspan="5"><div class="stock-empty"><i class="fa-solid fa-folder-open" aria-hidden="true"></i><p>{% trans "No doctrines or fits tracked yet." %}</p><span class="text-muted small">{% trans "Select a doctrine from Fittings or track a single fit. New tracking is private by default." %}</span></div></td></tr>{% endfor %}
+    </tbody></table></div>{% include "markettracker/includes/management/pagination.html" %}
+  </section>
+  <details class="stock-help small text-muted"><summary>{% trans "How fit updates work" %}</summary><p class="mb-0 mt-2">{% trans "Fitting changes synchronize during market refreshes. Sync fits applies changes immediately; current stock is fetched with the next market refresh. Existing ship targets are preserved, and new fits inherit the default target." %}</p></details>
+  <details class="card stock-settings"><summary><i class="fa-solid fa-sliders me-1" aria-hidden="true"></i>{% trans "Automatic cleanup" %}<span class="stock-source">{% if selected_location.remove_unused_doctrine_items %}{% trans "Enabled" %}{% else %}{% trans "Disabled" %}{% endif %}</span></summary><div class="card-body"><form method="post" action="{{ return_url }}">
+    {% csrf_token %}{% include "markettracker/includes/management/return_fields.html" %}
+    <div class="form-check"><input class="form-check-input" id="stock-cleanup" type="checkbox" name="remove_unused_doctrine_items" {% if selected_location.remove_unused_doctrine_items %}checked{% endif %}><label class="form-check-label" for="stock-cleanup">{% trans "Remove automatic items after their last tracked doctrine or fit stops using them" %}</label></div><p class="form-text">{% trans "Manual rules and members of item groups are preserved, including manual targets of zero." %}</p><button class="btn btn-primary btn-sm" name="save_settings" type="submit">{% trans "Save setting" %}</button>
+  </form></div></details>
 {% endif %}
-<div class="card mb-3"><h2 class="card-header h5">{% trans "Tracked doctrines and fits" %}</h2><div class="card-body table-responsive"><table class="table"><thead><tr><th>{% trans "Doctrine / fit" %}</th><th>{% trans "Visibility" %}</th><th>{% trans "Ship targets" %}</th><th>{% trans "Actions" %}</th></tr></thead><tbody>
-{% for plan in tracked_doctrines %}<tr><td>{{ plan }}</td><td>{% if plan.is_shared %}{% trans "Shared" %}{% else %}{% trans "Private" %}{% endif %}</td><td>{% for target in plan.fit_targets.all %}<div>{{ target.fitting.name }}: {{ target.desired_quantity }}</div>{% endfor %}</td><td><a class="btn btn-sm btn-primary" href="?loc={{ selected_location.pk }}&edit={{ plan.pk }}">{% trans "Edit" %}</a><form class="d-inline" method="post" action="?loc={{ selected_location.pk }}">{% csrf_token %}<input type="hidden" name="plan_id" value="{{ plan.pk }}"><button class="btn btn-sm btn-outline-danger" name="delete" type="submit">{% trans "Stop tracking" %}</button></form></td></tr>
-{% empty %}<tr><td colspan="4">{% trans "No doctrines or fits tracked." %}</td></tr>{% endfor %}
-</tbody></table>
-<form method="post" action="?loc={{ selected_location.pk }}">{% csrf_token %}<button class="btn btn-secondary" name="sync" type="submit">{% trans "Sync now" %}</button></form>
-</div></div>
-<div class="card"><h2 class="card-header h5">{% trans "Automatic item cleanup" %}</h2><div class="card-body"><form method="post" action="?loc={{ selected_location.pk }}">{% csrf_token %}
-<label><input type="checkbox" name="remove_unused_doctrine_items" {% if selected_location.remove_unused_doctrine_items %}checked{% endif %}> {% trans "Remove automatically tracked items when their last doctrine or fit stops using them" %}</label><p class="text-muted">{% trans "Manual item targets and members of item groups are preserved. Existing tracking rules are treated as manual. Saving a manual target for an automatic item protects it from cleanup." %}</p><button class="btn btn-primary" name="save_settings" type="submit">{% trans "Save cleanup setting" %}</button>
-</form></div></div>
 {% endblock %}

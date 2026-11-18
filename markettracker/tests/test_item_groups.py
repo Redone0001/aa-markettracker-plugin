@@ -99,7 +99,7 @@ def test_group_manage_and_display(client, item_group, settings):
     settings.TEMPLATES = templates
     user = get_user_model().objects.create_superuser("group-manager", "manager@example.test", "password")
     client.force_login(user)
-    url = reverse("markettracker:manage_stock") + f"?loc={item_group.location_id}"
+    url = reverse("markettracker:manage_stock") + f"?loc={item_group.location_id}&section=groups"
     with patch("markettracker.views.location_display_name", return_value="Test location"):
         response = client.get(url)
         assert response.status_code == 200

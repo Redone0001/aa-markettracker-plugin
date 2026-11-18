@@ -21,21 +21,52 @@ from .stat_groups import matching_type_ids, stat_choices
 EXCLUDED_GROUP_IDS = [6, 1, 14]
 EXCLUDED_CATEGORIES = ["Blueprint", "SKINs"]
 
+
+def style_stock_fields(form):
+    """Use native Bootstrap widgets while keeping AJAX selectors intact."""
+    for field in form.fields.values():
+        widget = field.widget
+        if isinstance(widget, forms.CheckboxSelectMultiple):
+            css = "stock-stat-options"
+        elif isinstance(widget, forms.CheckboxInput):
+            css = "form-check-input"
+        elif isinstance(widget, (forms.Select, forms.SelectMultiple)):
+            css = "form-select"
+        else:
+            css = "form-control"
+        existing = widget.attrs.get("class", "")
+        widget.attrs["class"] = " ".join(dict.fromkeys((existing + " " + css).split()))
+
+
 # ===== Tracked Items =====
 
+
 class TrackedItemForm(forms.ModelForm):
+    desired_quantity = forms.IntegerField(
+        min_value=0,
+        label=_("Manual target"),
+        help_text=_(
+            "Your minimum for this location. Zero turns off the manual minimum; doctrine and group targets still apply."
+        ),
+    )
+
     class Meta:
         model = TrackedItem
         fields = ["item", "desired_quantity"]
         widgets = {
-            "item": forms.Select(attrs={
-                "class": "select-search-item hydrating",
-                "data-placeholder": "Search item…",
-            })
+            "item": forms.Select(
+                attrs={
+                    "class": "select-search-item hydrating",
+                    "data-placeholder": "Search item…",
+                }
+            )
         }
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, location=None, **kwargs):
         super().__init__(*args, **kwargs)
+        if location:
+            self.instance.location = location
+        style_stock_fields(self)
 
         if self.instance and self.instance.pk:
             self.fields["item"].queryset = EveType.objects.filter(
@@ -44,10 +75,7 @@ class TrackedItemForm(forms.ModelForm):
         else:
             self.fields["item"].queryset = EveType.objects.none()
             if self.is_bound:
-                raw = (
-                    self.data.get(self.add_prefix("item"))
-                    or self.data.get("item")
-                )
+                raw = self.data.get(self.add_prefix("item")) or self.data.get("item")
                 try:
                     tid = int(raw)
                 except (TypeError, ValueError):
@@ -59,6 +87,19 @@ class TrackedItemForm(forms.ModelForm):
                     )
 
         self.fields["desired_quantity"].widget.attrs.update({"min": 0, "placeholder": "0"})
+
+    def clean_item(self):
+        item = self.cleaned_data["item"]
+        if (
+            self.instance.location_id
+            and TrackedItem.objects.filter(location_id=self.instance.location_id, item=item)
+            .exclude(pk=self.instance.pk)
+            .exists()
+        ):
+            raise forms.ValidationError(
+                _("This item is already tracked here. Edit its existing target instead.")
+            )
+        return item
 
 
 class BulkTrackedItemForm(forms.Form):
@@ -200,6 +241,7 @@ class MarketTrackingConfigForm(forms.ModelForm):
 
 # ===== Deliveries =====
 
+
 class DeliveryQuantityForm(forms.ModelForm):
     class Meta:
         model = Delivery
@@ -216,7 +258,16 @@ class ContractDeliveryQuantityForm(forms.ModelForm):
 
 # ===== Tracked Contracts =====
 
+
 class TrackedContractForm(forms.ModelForm):
+    max_price = forms.DecimalField(
+        min_value=0,
+        max_digits=20,
+        decimal_places=2,
+        label=_("Maximum price (ISK)"),
+        help_text=_("Zero means no price limit."),
+    )
+
     class Meta:
         model = TrackedContract
         fields = ["mode", "title_filter", "fitting", "max_price", "desired_quantity"]
@@ -224,18 +275,29 @@ class TrackedContractForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        self.fields["mode"].label = _("Tracking type")
+        self.fields["mode"].label = _("Match by")
+        self.fields["mode"].choices = [
+            (TrackedContract.Mode.CUSTOM, _("Contract title")),
+            (TrackedContract.Mode.DOCTRINE, _("Fitting")),
+        ]
         self.fields["title_filter"].label = _("Title contains")
-        self.fields["fitting"].label = _("Doctrine fitting")
-        self.fields["max_price"].label = _("Max price (ISK)")
-        self.fields["desired_quantity"].label = _("Desired contracts")
+        self.fields["fitting"].label = _("Fitting to match")
+        self.fields["max_price"].label = _("Maximum price (ISK)")
+        self.fields["desired_quantity"].label = _("Location target")
 
         if HAS_FITTINGS:
             self.fields["fitting"].widget = forms.Select(attrs={"class": "select-search-fitting"})
-            self.fields["fitting"].queryset = Fitting.objects.all().order_by("name")
+            fit_id = self.data.get("fitting") if self.is_bound else self.instance.fitting_id
+            self.fields["fitting"].queryset = (
+                Fitting.objects.filter(pk=fit_id).select_related("ship_type")
+                if str(fit_id).isdigit()
+                else Fitting.objects.none()
+            )
         else:
             self.fields["fitting"].widget = forms.Select(attrs={"disabled": "disabled"})
             self.fields["fitting"].help_text = _("Fittings app not installed.")
+        self.fields["desired_quantity"].help_text = _("Number of matching contracts needed at this location. Zero disables shortage monitoring.")
+        style_stock_fields(self)
 
     def clean(self):
         cleaned = super().clean()
@@ -378,7 +440,10 @@ class TrackedItemGroupForm(forms.ModelForm):
 
     def __init__(self, *args, location, **kwargs):
         super().__init__(*args, **kwargs)
+        style_stock_fields(self)
         self.instance.location = location
+        self.fields["stats_reference"].label = _("Reference item")
+        self.fields["desired_quantity"].label = _("Manual target")
         self.fields["items"].required = False
         reference_id = (
             self.data.get("stats_reference") if self.is_bound else self.instance.stats_reference_id

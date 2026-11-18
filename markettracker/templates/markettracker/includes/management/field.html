@@ -1,0 +1,9 @@
+{% if field.is_hidden %}{{ field }}{% else %}
+<div class="stock-field" {% if group_field %}data-group-field="{{ field.name }}"{% endif %} {% if source_field %}data-source-field="{{ field.name }}"{% endif %}>
+  {% if field.field.widget.input_type == 'checkbox' and not field.field.widget.allow_multiple_selected %}
+    <div class="form-check">{{ field }}<label class="form-check-label" for="{{ field.id_for_label }}">{{ field.label }}</label></div>
+  {% else %}<label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}{% endif %}
+  {% for error in field.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}
+  {% if field.help_text %}<div class="form-text">{{ field.help_text }}</div>{% endif %}
+</div>
+{% endif %}

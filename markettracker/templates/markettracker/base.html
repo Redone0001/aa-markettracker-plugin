@@ -29,7 +29,7 @@
     </a>
     {% if perms.markettracker.can_manage_stocks %}
     <a
-        class="nav-link {% navactive request 'markettracker:manage_stock' %}"
+        class="nav-link {% navactive request 'markettracker:manage_stock markettracker:manage_doctrines' %}"
         href="{% url 'markettracker:manage_stock' %}"
     >
         {% trans "Manage Stock" %}
@@ -168,10 +168,12 @@ html.dark .filter-clear-btn,
     $(function() {
       // Items
       const $items = $('.select-search-item');
-      if ($items.length) {
-        $items.select2({
+      $items.each(function() {
+        const $item = $(this);
+        $item.select2({
           width: '100%',
-          placeholder: $items.data('placeholder') || 'Search item…',
+          placeholder: $item.data('placeholder') || 'Search item…',
+          dropdownParent: $item.closest('.stock-field').length ? $item.closest('.stock-field') : $(document.body),
           minimumInputLength: 2,
           ajax: {
             url: "{% url 'markettracker:item_search' %}",
@@ -188,14 +190,16 @@ html.dark .filter-clear-btn,
             processResults: function (data) { return data; }
           }
         });
-      }
+      });
 
       // Fittings
       const $fittings = $('.select-search-fitting');
-      if ($fittings.length) {
-        $fittings.select2({
+      $fittings.each(function() {
+        const $fitting = $(this);
+        $fitting.select2({
           width: '100%',
-          placeholder: $fittings.data('placeholder') || 'Search fitting…',
+          placeholder: $fitting.data('placeholder') || 'Search fitting…',
+          dropdownParent: $fitting.closest('.stock-field').length ? $fitting.closest('.stock-field') : $(document.body),
           minimumInputLength: 2,
           ajax: {
             url: "{% url 'markettracker:fitting_search' %}",
@@ -204,7 +208,7 @@ html.dark .filter-clear-btn,
             processResults: data => ({ results: data.results, pagination: data.pagination })
           }
         });
-      }
+      });
     });
     </script>
     <script>

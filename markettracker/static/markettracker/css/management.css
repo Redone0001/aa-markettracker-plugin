@@ -1,0 +1,123 @@
+/* Stock configuration follows the active Alliance Auth theme. */
+.stock-management { --stock-muted: var(--bs-secondary-color, var(--bs-secondary)); container: stock-management / inline-size; }
+.stock-management .btn { display: inline-flex; align-items: center; justify-content: center; gap: .35rem; white-space: nowrap; }
+.stock-management .btn-outline-secondary,
+.stock-management .filter-clear-btn.btn-outline-secondary,
+.stock-management .item-filter-btn {
+  --bs-btn-color: var(--bs-body-color);
+  --bs-btn-bg: transparent;
+  --bs-btn-border-color: color-mix(in srgb, var(--bs-body-color) 25%, transparent);
+  --bs-btn-hover-color: var(--bs-body-color);
+  --bs-btn-hover-bg: color-mix(in srgb, var(--bs-body-color) 10%, transparent);
+  --bs-btn-hover-border-color: var(--bs-body-color);
+  --bs-btn-active-color: var(--bs-white);
+  --bs-btn-active-bg: var(--bs-primary);
+  --bs-btn-active-border-color: var(--bs-primary);
+}
+.stock-management .btn-check:checked + .item-filter-btn { box-shadow: 0 0 0 .12rem color-mix(in srgb, var(--bs-primary) 30%, transparent); }
+.stock-management .stock-page-header,
+.stock-management .stock-section-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: .8rem; }
+.stock-management .stock-page-header { margin-bottom: .6rem; }
+.stock-management .stock-header-actions,
+.stock-management .stock-heading-actions { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
+.stock-management .stock-location-form { max-width: 19rem; }
+.stock-management .stock-utility-bar { margin-bottom: .7rem; }
+.stock-management .stock-connection { font-size: .75rem; color: var(--stock-muted); }
+.stock-management .stock-connection summary { cursor: pointer; }
+.stock-management .stock-connection-state { margin-left: .6rem; font-size: .7rem; }
+.stock-management .stock-connection-panel { padding: .8rem; margin-top: .5rem; border: 1px solid var(--bs-border-color); border-radius: var(--bs-border-radius); max-width: 42rem; }
+.stock-management .stock-section-nav { display: flex; align-items: stretch; gap: 1.3rem; overflow-x: auto; border-bottom: 1px solid color-mix(in srgb, var(--bs-body-color) 15%, transparent); margin-bottom: 1.5rem; }
+.stock-management .stock-section-link { display: flex; align-items: center; gap: .45rem; padding: .7rem .1rem; border-bottom: 2px solid transparent; text-decoration: none; color: var(--stock-muted); white-space: nowrap; font-size: .85rem; }
+.stock-management .stock-section-link:hover { color: var(--bs-body-color); }
+.stock-management .stock-section-link.active { border-bottom-color: var(--bs-primary); color: var(--bs-body-color); font-weight: 600; }
+.stock-management .stock-section-link i { font-size: .8rem; }
+.stock-management .stock-count { padding: .05rem .4rem; border-radius: 1rem; font-size: .7rem; background: color-mix(in srgb, var(--bs-body-color) 8%, transparent); font-weight: 500; }
+.stock-management .stock-section-heading { margin-bottom: .9rem; }
+.stock-management .stock-section-heading p { max-width: 44rem; }
+.stock-management .stock-back { display: inline-flex; align-items: center; gap: .35rem; font-size: .75rem; text-decoration: none; color: var(--stock-muted); margin-bottom: .5rem; }
+.stock-management .stock-back:hover { color: var(--bs-body-color); }
+.stock-management .stock-list { overflow: hidden; }
+.stock-management .stock-filter-bar { padding: .85rem 1rem; border-bottom: 1px solid var(--bs-card-border-color, var(--bs-border-color)); background: var(--bs-card-cap-bg); }
+.stock-management .stock-search-row { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
+.stock-management .stock-search { flex: 1 1 15rem; position: relative; }
+.stock-management .stock-search > i { position: absolute; left: .65rem; top: 50%; transform: translateY(-50%); font-size: .75rem; color: var(--stock-muted); pointer-events: none; }
+.stock-management .stock-search input { padding-left: 1.9rem; }
+.stock-management .stock-doctrine-filter { flex: 0 1 14rem; }
+.stock-management .stock-type-filters { margin-top: .65rem; font-size: .75rem; color: var(--stock-muted); }
+.stock-management .stock-type-filters summary { cursor: pointer; }
+.stock-management .stock-filter-active { color: var(--bs-body-color); margin-left: .4rem; }
+.stock-management .stock-table { font-size: .82rem; --bs-table-bg: transparent; }
+.stock-management .stock-table th { color: var(--stock-muted); font-size: .72rem; font-weight: 500; white-space: nowrap; padding: .65rem 1rem; }
+.stock-management .stock-table td { padding: .65rem 1rem; border-color: var(--bs-card-border-color, var(--bs-border-color)); }
+.stock-management .stock-table thead { border-bottom: 1px solid var(--bs-card-border-color, var(--bs-border-color)); }
+.stock-management .stock-table tbody tr:last-child td { border-bottom: 0; }
+.stock-management .stock-table tbody tr:hover { background: color-mix(in srgb, var(--bs-body-color) 3%, transparent); }
+.stock-management .stock-record { display: flex; align-items: center; gap: .7rem; min-width: 14rem; }
+.stock-management .stock-record > img { border-radius: var(--bs-border-radius-sm); flex-shrink: 0; object-fit: contain; }
+.stock-management .stock-record-icon { display: inline-flex; align-items: center; justify-content: center; width: 2rem; height: 2rem; flex-shrink: 0; color: var(--stock-muted); background: color-mix(in srgb, var(--bs-body-color) 5%, transparent); border-radius: var(--bs-border-radius-sm); }
+.stock-management .stock-record-name { font-weight: 500; overflow-wrap: anywhere; }
+.stock-management .stock-record-meta { font-size: .7rem; color: var(--stock-muted); margin-top: .15rem; max-width: 30rem; }
+.stock-management .stock-source { display: inline-block; font-size: .65rem; font-weight: 500; color: var(--stock-muted); border: 1px solid color-mix(in srgb, var(--bs-body-color) 18%, transparent); padding: 0 .3rem; border-radius: var(--bs-border-radius-sm); margin-left: .25rem; white-space: nowrap; }
+.stock-management .stock-number { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.stock-management .stock-row-actions { display: flex; align-items: center; justify-content: flex-end; gap: .35rem; }
+.stock-management .stock-row-actions .btn { padding: .2rem .5rem; font-size: .72rem; }
+.stock-management .stock-table-footer { padding: .65rem 1rem; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: .5rem; border-top: 1px solid var(--bs-card-border-color, var(--bs-border-color)); }
+.stock-management .stock-help { font-size: .75rem; margin-top: .85rem; max-width: 50rem; }
+.stock-management .stock-help summary { cursor: pointer; }
+.stock-management .stock-empty { text-align: center; padding: 2.5rem 1rem; }
+.stock-management .stock-empty > i { display: block; color: var(--stock-muted); font-size: 1.2rem; margin-bottom: .7rem; }
+.stock-management .stock-empty p { margin-bottom: .35rem; }
+.stock-management .stock-editor { max-width: 48rem; }
+.stock-management .stock-editor .card-body { padding: 1.25rem; }
+.stock-management .stock-field { margin-bottom: 1.1rem; position: relative; }
+.stock-management .stock-field .form-label { display: block; font-size: .8rem; font-weight: 500; margin-bottom: .4rem; }
+.stock-management .stock-field .form-control,
+.stock-management .stock-field .form-select,
+.stock-management .stock-field .form-check-label { font-size: .85rem; }
+.stock-management .stock-field .form-text { font-size: .73rem; color: var(--stock-muted); }
+.stock-management .stock-field .form-check { min-height: 1.4rem; }
+.stock-management .stock-form-actions { display: flex; flex-wrap: wrap; gap: .5rem; border-top: 1px solid var(--bs-card-border-color, var(--bs-border-color)); margin-top: 1.25rem; padding-top: 1rem; }
+.stock-management .stock-context-note { padding: .75rem; border-radius: var(--bs-border-radius-sm); background: color-mix(in srgb, var(--bs-primary) 7%, transparent); color: var(--stock-muted); }
+.stock-management .stock-stat-options,
+.stock-management [data-stat-options] { max-height: 16rem; overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr)); gap: .5rem; padding: .75rem; border: 1px solid var(--bs-border-color); border-radius: var(--bs-border-radius); font-size: .8rem; }
+.stock-management .select2-container { max-width: 100%; font-size: .85rem; }
+.stock-management .select2-container .select2-selection--single,
+.stock-management .select2-container .select2-selection--multiple,
+.stock-management .select2-dropdown { background-color: var(--stock-control-bg, var(--bs-body-bg)) !important; color: var(--stock-control-color, var(--bs-body-color)) !important; border-color: var(--stock-control-border, var(--bs-border-color)); border-radius: var(--bs-border-radius); }
+.stock-management .select2-container .select2-selection--single { height: 2.4rem; display: flex; align-items: center; }
+.stock-management .select2-container .select2-selection--single .select2-selection__arrow { top: .3rem; }
+.stock-management .select2-container .select2-selection__rendered,
+.stock-management .select2-results__option,
+.stock-management .select2-search__field { color: var(--stock-control-color, var(--bs-body-color)) !important; }
+.stock-management .select2-search--dropdown .select2-search__field { background-color: var(--stock-control-bg, var(--bs-body-bg)); border-color: var(--stock-control-border, var(--bs-border-color)); border-radius: var(--bs-border-radius-sm); }
+.stock-management .select2-container .select2-selection__choice { background: color-mix(in srgb, var(--stock-control-color, var(--bs-body-color)) 8%, transparent); color: var(--stock-control-color, var(--bs-body-color)); border-color: var(--stock-control-border, var(--bs-border-color)); }
+.stock-management .select2-container .select2-selection__choice__remove { color: var(--stock-muted); }
+.stock-management .select2-container .select2-results__option[aria-selected=true] { background-color: color-mix(in srgb, var(--stock-control-color, var(--bs-body-color)) 12%, transparent); }
+.stock-management .select2-container .select2-results__option--highlighted[aria-selected] { background-color: var(--bs-primary); color: var(--bs-white) !important; }
+.stock-management .stock-editor-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); gap: 1rem; }
+.stock-management .stock-editor-grid .stock-editor { max-width: none; }
+.stock-management .stock-card-heading { padding: .9rem 1.25rem; border-bottom: 1px solid var(--bs-card-border-color, var(--bs-border-color)); font-size: .85rem; font-weight: 600; }
+.stock-management .stock-ship-target { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: .7rem 0; border-bottom: 1px solid var(--bs-card-border-color, var(--bs-border-color)); }
+.stock-management .stock-ship-target:first-of-type { padding-top: 0; }
+.stock-management .stock-ship-target .stock-record { min-width: 0; }
+.stock-management .stock-ship-target input[type=number] { max-width: 6rem; width: 6rem !important; }
+.stock-management .stock-settings { margin-top: 1rem; font-size: .8rem; }
+.stock-management .stock-settings > summary { cursor: pointer; padding: .85rem 1rem; }
+.stock-management .stock-settings .card-body { border-top: 1px solid var(--bs-card-border-color, var(--bs-border-color)); }
+@container stock-management (max-width: 48rem) {
+  .stock-management .stock-editor-grid { grid-template-columns: minmax(0, 1fr); }
+  .stock-management .stock-section-nav { gap: .9rem; }
+}
+@media (max-width: 575.98px) {
+  .stock-management .stock-header-actions { width: 100%; }
+  .stock-management .stock-location-form { flex: 1; min-width: 0; }
+  .stock-management .stock-section-nav { gap: .8rem; margin-bottom: 1rem; }
+  .stock-management .stock-section-link { gap: .3rem; font-size: .8rem; }
+  .stock-management .stock-section-link i { display: none; }
+  .stock-management .stock-section-heading { align-items: flex-start; }
+  .stock-management .stock-doctrine-filter { flex: 1 1 12rem; }
+  .stock-management .stock-filter-bar { padding: .75rem; }
+  .stock-management .stock-table td, .stock-management .stock-table th { padding: .65rem .75rem; }
+  .stock-management .stock-editor .card-body { padding: 1rem; }
+  .stock-management .stock-ship-target { align-items: flex-start; gap: .5rem; }
+}

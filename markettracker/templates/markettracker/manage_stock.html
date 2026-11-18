@@ -1,388 +1,107 @@
-{% extends "markettracker/base.html" %}
-{% load i18n humanize %}
-{% block page_title %}{% trans "Tracked market" %} – {{ location_title }}{% endblock %}
+{% extends "markettracker/manage_base.html" %}
+{% load i18n humanize market_extras %}
 
+{% block management_content %}
+{% if not selected_location %}
+  <section class="card stock-empty"><div class="card-body"><i class="fa-solid fa-location-dot text-muted mb-3" aria-hidden="true"></i><h2 class="h5">{% trans "Set up a market location" %}</h2><p class="text-muted">{% trans "No market locations are configured. An administrator needs to add a location before stock can be tracked." %}</p>{% if user.is_superuser %}{% url 'admin:markettracker_trackedlocation_add' as add_location_url %}{% if add_location_url %}<a class="btn btn-primary btn-sm" href="{{ add_location_url }}">{% trans "Add location" %}</a>{% endif %}{% endif %}</div></section>
 
-{% block header_nav_collapse_right %}
-  {{ block.super }}
-  <div class="gap-1">
-  {% if user.is_superuser %}
-    <form method="post" class="d-inline">
-      {% csrf_token %}
-      <button type="submit" name="refresh" class="btn btn-warning me-2">
-        {% trans "Refresh Items" %}
-      </button>
-    </form>
-    <form method="post" class="d-inline">
-      {% csrf_token %}
-      <button type="submit" name="refresh_contracts" class="btn btn-warning">
-        {% trans "Refresh Contracts" %}
-      </button>
-    </form>
-    {% endif %}
-    <form method="get" class="d-inline" action="{% url 'markettracker:character_login_manage' %}">
-      {% csrf_token %}
-      <button type="submit" name="login-market" class="btn btn-success">
-        {% trans "Log in with Market Scope Character" %}
-      </button>
-    </form>
-  </div>
-{% endblock %}
-
-{% block content %}
-
-
-
-
-
-
-{% if market_character %}
-  <div class="d-flex align-items-center mb-3">
-    <img src="https://images.evetech.net/characters/{{ market_character.character.character.character_id }}/portrait?size=64"
-         class="rounded me-2"
-         alt="{{ market_character.character.character.character_name }}">
-    <div>
-      <div class="fw-bold">{{ market_character.character.character.character_name }}</div>
-    </div>
-  </div>
-{% endif %}
-
-<form method="get" class="d-inline">
-  <label class="form-label me-2 mb-0">{% trans "Location" %}</label>
-  <select name="loc" class="form-select d-inline-block w-auto"
-          onchange="this.form.submit()">
-    {% for l in locations %}
-      <option value="{{ l.id }}" {% if selected_location and l.id == selected_location.id %}selected{% endif %}>
-        {{ l.display_name }}
-      </option>
-
-    {% endfor %}
-  </select>
-    {# zachowaj filtry po zmianie lokacji #}
-  {% if q %}<input type="hidden" name="q" value="{{ q }}">{% endif %}
-  {% if cq %}<input type="hidden" name="cq" value="{{ cq }}">{% endif %}
-  {% if doctrine_only %}<input type="hidden" name="doctrine_only" value="{{ doctrine_only }}">{% endif %}
-  {% for item_filter in item_filters %}
-    {% if item_filter.selected %}
-      <input type="hidden" name="item_type" value="{{ item_filter.key }}">
-    {% endif %}
-  {% endfor %}
-  {% if exclude_item_types %}
-    <input type="hidden" name="exclude_item_types" value="1">
-  {% endif %}
-</form>
-{# ============ ITEMS FORM ============ #}
-{% if form %}
-  <h1 class="mb-4">{% trans "Add/Edit Item" %}</h1>
-  <form method="post" class="mb-4">
-    {% csrf_token %}
-    {{ form.as_p }}
-    {% if form.instance.pk %}
-      <input type="hidden" name="item_id" value="{{ form.instance.pk }}">
-      <button type="submit" name="edit" class="btn btn-primary">💾 {% trans "Save" %}</button>
-    {% else %}
-      <button type="submit" name="add" class="btn btn-success">➕ {% trans "Add" %}</button>
-    {% endif %}
-    <a href="{% url 'markettracker:manage_stock' %}" class="btn btn-secondary">{% trans "Cancel" %}</a>
-  </form>
-
-{# ============ CONTRACTS ADD/EDIT FORM (na tej samej stronie) ============ #}
-{% elif tc_add_mode and tc_form or tc_edit_id and tc_form %}
-  <h1 class="mb-3">
-    {% if tc_edit_id %}{% trans "Edit Tracked Contract" %}{% else %}{% trans "Add Tracked Contract" %}{% endif %}
-  </h1>
-
-  <form method="post" class="row g-3">
-    {% csrf_token %}
-    {% if tc_edit_id %}
-      <input type="hidden" name="tc_id" value="{{ tc_edit_id }}">
-      <input type="hidden" name="tc_edit_submit" value="1">
-    {% else %}
-      <input type="hidden" name="tc_add_submit" value="1">
-    {% endif %}
-
-    <div class="col-12 col-md-3">
-      <label class="form-label">{% trans "Tracking type" %}</label>
-      {{ tc_form.mode }}
-    </div>
-
-    <div class="col-12 col-md-4" id="row-title-filter">
-      <label class="form-label">{% trans "Title contains" %}</label>
-      {{ tc_form.title_filter }}
-    </div>
-
-    <div class="col-12 col-md-4" id="row-fitting">
-      <label class="form-label">{% trans "Doctrine fitting" %}</label>
-      {{ tc_form.fitting }}
-    </div>
-
-    <div class="col-12 col-md-3">
-      <label class="form-label">{% trans "Desired contracts" %}</label>
-      {{ tc_form.desired_quantity }}
-    </div>
-
-    <div class="col-12 col-md-3">
-      <label class="form-label">{% trans "Max price (ISK)" %}</label>
-      {{ tc_form.max_price }}
-    </div>
-
-    <div class="col-12 d-flex gap-2">
-      {% if tc_edit_id %}
-        <button type="submit" class="btn btn-primary">💾 {% trans "Save" %}</button>
-      {% else %}
-        <button type="submit" class="btn btn-success">➕ {% trans "Add" %}</button>
-      {% endif %}
-      <a href="{% url 'markettracker:manage_stock' %}" class="btn btn-secondary">{% trans "Cancel" %}</a>
-    </div>
-  </form>
-
-  <script>
-    (function() {
-      const modeSel = document.getElementById("id_mode");
-      const rowTitle = document.getElementById("row-title-filter");
-      const rowFitting = document.getElementById("row-fitting");
-
-      function toggleFields() {
-        const v = modeSel.value;
-        if (v === "custom") {
-          rowTitle.style.display = "";
-          rowFitting.style.display = "none";
-        } else {
-          rowTitle.style.display = "none";
-          rowFitting.style.display = "";
-        }
-      }
-
-      if (modeSel) {
-        toggleFields();
-        modeSel.addEventListener("change", toggleFields);
-      }
-    })();
-  </script>
-
-{# ============ NORMALNY WIDOK Z LISTAMI ============ #}
-{% else %}
-  <h1 class="mb-4">{% trans "Manage Stock" %}</h1>
-  <a class="btn btn-primary mb-3" href="{% url 'markettracker:manage_doctrines' %}?loc={{ selected_location.pk }}">{% trans "Manage doctrine seeding" %}</a>
-
-  <section class="card my-3">
-    <h2 class="card-header h5">{% trans "Item groups" %}</h2>
-    <div class="card-body">
-      <p>{% trans "A group has one desired quantity shared across all its items at this location." %}</p>
-      <details {% if group_form.errors or group_form.instance.pk %}open{% endif %}>
-        <summary>{% if group_form.instance.pk %}{% trans "Edit group" %}{% else %}{% trans "Add group" %}{% endif %}</summary>
-        <form method="post" action="?loc={{ selected_location.pk }}" class="my-3" data-stat-choices-url="{% url 'markettracker:item_stat_choices' %}">
-          {% csrf_token %}
-          {{ group_form.non_field_errors }}
-          {% for field in group_form %}<div class="mb-3" data-group-field="{{ field.name }}">{{ field.label_tag }} {{ field }}{{ field.errors }}{% if field.help_text %}<p class="small text-muted">{{ field.help_text }}</p>{% endif %}</div>{% endfor %}
-          {% if group_form.instance.pk %}<input type="hidden" name="group_id" value="{{ group_form.instance.pk }}">{% endif %}
-          <button class="btn btn-primary" name="group_save" type="submit">{% trans "Save group" %}</button>
-          <a class="btn btn-secondary" href="?loc={{ selected_location.pk }}">{% trans "Cancel" %}</a>
-        </form>
-      </details>
-      <div class="table-responsive">
-        <table class="table">
-          <thead><tr><th>{% trans "Group" %}</th><th>{% trans "Items" %}</th><th>{% trans "Desired quantity" %}</th><th>{% trans "Actions" %}</th></tr></thead>
-          <tbody>{% for group in tracked_item_groups %}
-            <tr><td>{{ group.name }}{% if group.stats_reference_id %}<div class="small text-muted">{% trans "Matched by stats" %}</div>{% endif %}</td><td>{% for item in group.items.all %}{{ item.name }}{% if not forloop.last %}, {% endif %}{% endfor %}</td><td>{{ group.effective_quantity }}</td>
-              <td><a class="btn btn-sm btn-primary" href="?loc={{ selected_location.pk }}&group_edit={{ group.pk }}">{% trans "Edit" %}</a>
-                <form method="post" action="?loc={{ selected_location.pk }}" class="d-inline">
-                  {% csrf_token %}<input type="hidden" name="group_id" value="{{ group.pk }}">
-                  <button class="btn btn-sm btn-outline-danger" type="submit" name="group_delete">{% trans "Delete group" %}</button>
-                </form>
-              </td>
-            </tr>
-          {% empty %}<tr><td colspan="4">{% trans "No item groups yet." %}</td></tr>{% endfor %}</tbody>
-        </table>
+{% elif form %}
+  <div class="stock-section-heading"><div><a class="stock-back" href="{{ return_url }}"><i class="fa-solid fa-arrow-left" aria-hidden="true"></i> {% trans "Back to items" %}</a><h2 class="h5 mb-0">{% if form.instance.pk %}{% trans "Edit item target" %}{% else %}{% trans "Add tracked item" %}{% endif %}</h2></div></div>
+  <section class="card stock-editor"><div class="card-body">
+    <form method="post" action="{{ return_url }}">
+      {% csrf_token %}{% include "markettracker/includes/management/return_fields.html" %}
+      {% if form.non_field_errors %}<div class="alert alert-danger small">{{ form.non_field_errors }}</div>{% endif %}
+      {% for field in form %}{% include "markettracker/includes/management/field.html" %}{% endfor %}
+      {% if form.instance.doctrine_quantity %}<div class="stock-context-note small"><i class="fa-solid fa-folder-open me-1" aria-hidden="true"></i>{% trans "Doctrine demand:" %} <strong>{{ form.instance.doctrine_quantity }}</strong>. {% trans "Saving this target also keeps the item as a manual rule." %}</div>{% endif %}
+      <div class="stock-form-actions">
+        {% if form.instance.pk %}<input type="hidden" name="item_id" value="{{ form.instance.pk }}"><button class="btn btn-primary btn-sm" name="edit" type="submit">{% trans "Save target" %}</button>{% else %}<button class="btn btn-primary btn-sm" name="add" type="submit">{% trans "Add item" %}</button>{% endif %}
+        <a class="btn btn-outline-secondary btn-sm" href="{{ return_url }}">{% trans "Cancel" %}</a>
       </div>
+    </form>
+  </div></section>
+
+{% elif tc_form %}
+  <div class="stock-section-heading"><div><a class="stock-back" href="{{ return_url }}"><i class="fa-solid fa-arrow-left" aria-hidden="true"></i> {% trans "Back to contracts" %}</a><h2 class="h5 mb-0">{% if tc_edit_id %}{% trans "Edit contract tracking" %}{% else %}{% trans "Add contract tracking" %}{% endif %}</h2></div></div>
+  <section class="card stock-editor"><div class="card-body">
+    <form method="post" action="{{ return_url }}" data-contract-form>
+      {% csrf_token %}{% include "markettracker/includes/management/return_fields.html" %}
+      {% if tc_form.non_field_errors %}<div class="alert alert-danger small">{{ tc_form.non_field_errors }}</div>{% endif %}
+      {% for field in tc_form %}<div {% if field.name == 'title_filter' %}data-contract-field="custom"{% elif field.name == 'fitting' %}data-contract-field="doctrine"{% endif %}>{% include "markettracker/includes/management/field.html" %}</div>{% endfor %}
+      {% if tc_edit_id %}<p class="stock-context-note small">{% trans "Matching rules and maximum price are shared wherever this contract rule is tracked. The quantity target applies to this location." %}</p>{% endif %}
+      <div class="stock-form-actions">
+        {% if tc_edit_id %}<input type="hidden" name="tc_id" value="{{ tc_edit_id }}"><button class="btn btn-primary btn-sm" name="tc_edit_submit" type="submit">{% trans "Save tracking" %}</button>{% else %}<button class="btn btn-primary btn-sm" name="tc_add_submit" type="submit">{% trans "Add contract" %}</button>{% endif %}
+        <a class="btn btn-outline-secondary btn-sm" href="{{ return_url }}">{% trans "Cancel" %}</a>
+      </div>
+    </form>
+  </div></section>
+
+{% elif show_group_form %}
+  <div class="stock-section-heading"><div><a class="stock-back" href="{{ return_url }}"><i class="fa-solid fa-arrow-left" aria-hidden="true"></i> {% trans "Back to groups" %}</a><h2 class="h5 mb-0">{% if group_form.instance.pk %}{% trans "Edit item group" %}{% else %}{% trans "Add item group" %}{% endif %}</h2><p class="small text-muted mb-0 mt-1">{% trans "One shared target for interchangeable items." %}</p></div></div>
+  <section class="card stock-editor"><div class="card-body">
+    <form method="post" action="{{ return_url }}" data-stat-choices-url="{% url 'markettracker:item_stat_choices' %}">
+      {% csrf_token %}{% include "markettracker/includes/management/return_fields.html" %}
+      {% if group_form.non_field_errors %}<div class="alert alert-danger small">{{ group_form.non_field_errors }}</div>{% endif %}
+      {% for field in group_form %}{% include "markettracker/includes/management/field.html" with group_field=True %}{% endfor %}
+      <div class="stock-form-actions">{% if group_form.instance.pk %}<input type="hidden" name="group_id" value="{{ group_form.instance.pk }}">{% endif %}<button class="btn btn-primary btn-sm" name="group_save" type="submit">{% trans "Save group" %}</button><a class="btn btn-outline-secondary btn-sm" href="{{ return_url }}">{% trans "Cancel" %}</a></div>
+    </form>
+  </div></section>
+
+{% elif show_bulk_import %}
+  <div class="stock-section-heading"><div><a class="stock-back" href="{{ return_url }}"><i class="fa-solid fa-arrow-left" aria-hidden="true"></i> {% trans "Back to items" %}</a><h2 class="h5 mb-0">{% trans "Import tracked items" %}</h2><p class="text-muted small mb-0 mt-1">{% trans "Paste a shopping list to create or update manual targets." %}</p></div></div>
+  <section class="card stock-editor"><div class="card-body">
+    <form method="post" action="{{ return_url }}">
+      {% csrf_token %}{% include "markettracker/includes/management/return_fields.html" %}
+      {% if bulk_import_form.non_field_errors %}<div class="alert alert-danger small">{{ bulk_import_form.non_field_errors }}</div>{% endif %}
+      {% for field in bulk_import_form %}{% include "markettracker/includes/management/field.html" %}{% endfor %}
+      <div class="stock-form-actions"><button class="btn btn-primary btn-sm" name="bulk_import" value="1" type="submit">{% trans "Import items" %}</button><a class="btn btn-outline-secondary btn-sm" href="{{ return_url }}">{% trans "Cancel" %}</a></div>
+    </form>
+  </div></section>
+
+{% elif management_section == 'items' %}
+  <div class="stock-section-heading"><div><h2 class="h5 mb-1">{% trans "Tracked items" %}</h2><p class="text-muted small mb-0">{% trans "Individual targets and demand from your tracked doctrines." %}</p></div><div class="stock-heading-actions"><a class="btn btn-outline-secondary btn-sm" href="{% querystring import=1 %}"><i class="fa-solid fa-file-import" aria-hidden="true"></i> {% trans "Import items" %}</a><a class="btn btn-primary btn-sm" href="{% querystring add=1 %}"><i class="fa-solid fa-plus" aria-hidden="true"></i> {% trans "Add item" %}</a></div></div>
+  <section class="card stock-list">
+    <div class="stock-filter-bar">
+      <form method="get">
+        <input type="hidden" name="loc" value="{{ selected_location.pk }}"><input type="hidden" name="section" value="items">
+        <div class="stock-search-row">
+          <div class="stock-search"><label for="stock-item-search" class="visually-hidden">{% trans "Search items" %}</label><i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i><input id="stock-item-search" type="search" name="q" value="{{ q }}" class="form-control form-control-sm" placeholder="{% trans 'Search tracked items…' %}"></div>
+          <div class="stock-doctrine-filter"><label class="visually-hidden" for="stock-doctrine-filter">{% trans "Doctrine membership" %}</label><select id="stock-doctrine-filter" class="form-select form-select-sm" name="doctrine_only"><option value="">{% trans "All sources" %}</option><option value="yes" {% if doctrine_only == 'yes' %}selected{% endif %}>{% trans "Part of a doctrine / fit" %}</option><option value="no" {% if doctrine_only == 'no' %}selected{% endif %}>{% trans "Outside doctrines / fits" %}</option></select></div>
+          <button class="btn btn-primary btn-sm" type="submit">{% trans "Apply" %}</button><a class="btn btn-outline-secondary filter-clear-btn btn-sm" href="?loc={{ selected_location.pk }}&amp;section=items">{% trans "Clear" %}</a>
+        </div>
+        <details class="stock-type-filters" {% if has_item_type_filters %}open{% endif %}><summary>{% trans "Item type filters" %}{% if has_item_type_filters %}<span class="stock-filter-active">{% trans "Active" %}</span>{% endif %}</summary><div class="pt-2">{% include "markettracker/includes/item_filter_controls.html" with item_filter_id_prefix="manage-item-filter" %}</div></details>
+      </form>
     </div>
+    <div class="table-responsive"><table class="table stock-table align-middle mb-0"><thead><tr><th>{% trans "Item" %}</th><th class="text-end">{% trans "Manual target" %}</th><th class="text-end">{% trans "Doctrine demand" %}</th><th class="text-end">{% trans "Effective target" %}</th><th class="text-end">{% trans "Actions" %}</th></tr></thead><tbody>
+      {% for item in tracked_items %}
+        <tr><td><div class="stock-record"><img src="https://images.evetech.net/types/{{ item.item_id }}/icon?size=64" alt="" width="32" height="32" loading="lazy"><div><span class="stock-record-name">{{ item.item.name }}</span><div class="stock-record-meta">{{ item.item.eve_group.name }}{% if item.has_doctrine %}<span class="stock-source">{% trans "Doctrine" %}</span>{% endif %}{% if item.has_group %}<span class="stock-source">{% trans "Group" %}</span>{% endif %}</div></div></div></td>
+          <td class="text-end stock-number">{{ item.desired_quantity|intcomma }}</td><td class="text-end stock-number">{% if item.doctrine_quantity %}{{ item.doctrine_quantity|intcomma }}{% elif item.has_doctrine and item.has_group %}<a class="small" href="?loc={{ selected_location.pk }}&amp;section=groups">{% trans "Group target" %}</a>{% else %}<span class="text-muted">—</span>{% endif %}</td><td class="text-end stock-number fw-semibold">{% if not item.effective_quantity and item.has_group %}<a class="small fw-normal" href="?loc={{ selected_location.pk }}&amp;section=groups" title="{% trans 'Stock is monitored through the group target' %}">{% trans "Shared" %}</a>{% else %}{{ item.effective_quantity|intcomma }}{% endif %}</td>
+          <td><div class="stock-row-actions"><a class="btn btn-outline-secondary btn-sm" href="{% querystring edit_id=item.pk %}">{% trans "Edit" %}</a><form method="post" action="{% url 'markettracker:delete_trackeditem' item.pk %}?loc={{ selected_location.pk }}">{% csrf_token %}{% include "markettracker/includes/management/return_fields.html" %}<button class="btn btn-outline-danger btn-sm" type="submit" title="{% trans 'Remove this tracking rule' %}">{% trans "Remove" %}</button></form></div></td>
+        </tr>
+      {% empty %}<tr><td colspan="5"><div class="stock-empty"><i class="fa-solid fa-cube" aria-hidden="true"></i><p>{% if q or doctrine_only or has_item_type_filters %}{% trans "No items match these filters." %}{% else %}{% trans "No items tracked at this location yet." %}{% endif %}</p><span class="text-muted small">{% trans "Add an item, import a list, or track a doctrine to get started." %}</span></div></td></tr>{% endfor %}
+    </tbody></table></div>
+    {% include "markettracker/includes/management/pagination.html" %}
   </section>
+  {% include "markettracker/includes/management/target_help.html" %}
 
+{% elif management_section == 'groups' %}
+  <div class="stock-section-heading"><div><h2 class="h5 mb-1">{% trans "Item groups" %}</h2><p class="text-muted small mb-0">{% trans "Combine interchangeable items under one shared target." %}</p></div><a class="btn btn-primary btn-sm" href="{% querystring group_add=1 %}"><i class="fa-solid fa-plus" aria-hidden="true"></i> {% trans "Add group" %}</a></div>
+  <section class="card stock-list">
+    <form class="stock-filter-bar stock-search-row" method="get"><input type="hidden" name="loc" value="{{ selected_location.pk }}"><input type="hidden" name="section" value="groups"><div class="stock-search"><label class="visually-hidden" for="stock-group-search">{% trans "Search groups" %}</label><i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i><input id="stock-group-search" class="form-control form-control-sm" type="search" name="q" value="{{ q }}" placeholder="{% trans 'Search groups or their items…' %}"></div><button class="btn btn-primary btn-sm" type="submit">{% trans "Apply" %}</button><a class="btn btn-outline-secondary btn-sm" href="?loc={{ selected_location.pk }}&amp;section=groups">{% trans "Clear" %}</a></form>
+    <div class="table-responsive"><table class="table stock-table align-middle mb-0"><thead><tr><th>{% trans "Group" %}</th><th class="text-end">{% trans "Manual target" %}</th><th class="text-end">{% trans "Doctrine demand" %}</th><th class="text-end">{% trans "Effective target" %}</th><th class="text-end">{% trans "Actions" %}</th></tr></thead><tbody>
+      {% for group in tracked_item_groups %}<tr><td><div class="stock-record"><span class="stock-record-icon"><i class="fa-solid fa-layer-group" aria-hidden="true"></i></span><div><span class="stock-record-name">{{ group.name }}</span><span class="stock-source">{% if group.stats_reference_id %}{% trans "Same stats" %}{% else %}{% trans "Selected items" %}{% endif %}</span><div class="stock-record-meta">{{ group.member_count }} {% trans "items" %} · {% for item in group.items.all|slice:':3' %}{{ item.name }}{% if not forloop.last %}, {% endif %}{% endfor %}{% if group.more_members %} · +{{ group.more_members }} {% trans "more" %}{% endif %}</div></div></div></td><td class="text-end stock-number">{{ group.desired_quantity|intcomma }}</td><td class="text-end stock-number">{% if group.doctrine_quantity %}{{ group.doctrine_quantity|intcomma }}{% else %}<span class="text-muted">—</span>{% endif %}</td><td class="text-end stock-number fw-semibold">{{ group.effective_quantity|intcomma }}</td><td><div class="stock-row-actions"><a class="btn btn-outline-secondary btn-sm" href="{% querystring group_edit=group.pk %}">{% trans "Edit" %}</a><form method="post" action="{{ return_url }}">{% csrf_token %}{% include "markettracker/includes/management/return_fields.html" %}<input type="hidden" name="group_id" value="{{ group.pk }}"><button class="btn btn-outline-danger btn-sm" name="group_delete" type="submit">{% trans "Remove" %}</button></form></div></td></tr>
+      {% empty %}<tr><td colspan="5"><div class="stock-empty"><i class="fa-solid fa-layer-group" aria-hidden="true"></i><p>{% if q %}{% trans "No groups match this search." %}{% else %}{% trans "No item groups yet." %}{% endif %}</p><span class="text-muted small">{% trans "Select alternatives yourself or find items with matching stats." %}</span></div></td></tr>{% endfor %}
+    </tbody></table></div>{% include "markettracker/includes/management/pagination.html" %}
+  </section>
+  {% include "markettracker/includes/management/target_help.html" %}
 
-  <details class="card mt-3" {% if bulk_import_form.errors %}open{% endif %}>
-    <summary class="card-header" style="cursor: pointer;">
-      <strong>{% trans "Bulk upload tracked items" %}</strong>
-      <span class="ms-2">{% trans "Paste an item list" %}</span>
-    </summary>
-    <div class="card-body">
-      <form method="post">
-        {% csrf_token %}
-        {% if bulk_import_form.non_field_errors %}
-          <div class="alert alert-danger">{{ bulk_import_form.non_field_errors }}</div>
-        {% endif %}
-
-        <div class="mb-3">
-          <label class="form-label" for="{{ bulk_import_form.items.id_for_label }}">
-            {{ bulk_import_form.items.label }}
-          </label>
-          {{ bulk_import_form.items }}
-          {% for error in bulk_import_form.items.errors %}
-            <div class="text-danger small mt-1">{{ error }}</div>
-          {% endfor %}
-          <div class="form-text">{{ bulk_import_form.items.help_text }}</div>
-        </div>
-
-        <div class="row g-3 align-items-start">
-          <div class="col-12 col-md-3">
-            <label class="form-label" for="{{ bulk_import_form.multiplier.id_for_label }}">
-              {{ bulk_import_form.multiplier.label }}
-            </label>
-            {{ bulk_import_form.multiplier }}
-            {% for error in bulk_import_form.multiplier.errors %}
-              <div class="text-danger small mt-1">{{ error }}</div>
-            {% endfor %}
-          </div>
-          <div class="col-12 col-md-9 pt-md-4">
-            <div class="form-check">
-              {{ bulk_import_form.overwrite_amount }}
-              <label class="form-check-label" for="{{ bulk_import_form.overwrite_amount.id_for_label }}">
-                {{ bulk_import_form.overwrite_amount.label }}
-              </label>
-            </div>
-            <div class="form-text">{{ bulk_import_form.overwrite_amount.help_text }}</div>
-          </div>
-        </div>
-
-        <button type="submit" name="bulk_import" value="1" class="btn btn-primary mt-3">
-          {% trans "Import tracked items" %}
-        </button>
-      </form>
-    </div>
-  </details>
-
-  {# ITEMS CARD #}
-  
-  <div class="card mt-3">
-    <div class="card-header">
-      <strong>{% trans "Tracked Items" %}</strong>
-      <form method="get" class="d-flex flex-wrap gap-2 mt-2 mb-0 align-items-center">
-        <input type="hidden" name="loc" value="{{ selected_location.id }}">
-        {% if cq %}<input type="hidden" name="cq" value="{{ cq }}">{% endif %}
-        {% include "markettracker/includes/item_filter_controls.html" with item_filter_id_prefix="manage-item-filter" %}
-        {% include "markettracker/includes/doctrine_item_filter.html" %}
-        <input
-          type="text"
-          name="q"
-          value="{{ q }}"
-          class="form-control form-control-sm flex-grow-1"
-          style="min-width: 180px;"
-          placeholder="{% trans 'Search item...' %}"
-        >
-        <button class="btn btn-primary btn-sm" type="submit">{% trans "Apply filters" %}</button>
-        <a href="?loc={{ selected_location.id }}{% if cq %}&cq={{ cq|urlencode }}{% endif %}" class="btn btn-outline-secondary filter-clear-btn btn-sm">
-          {% trans "Clear" %}
-        </a>
-        <a href="?loc={{ selected_location.id }}&add=1" class="btn btn-success btn-sm">{% trans "Add" %}</a>
-      </form>
-    </div>
-    <div class="card-body p-0 card-body-scroll">
-      <div class="table-responsive table-scroll-1">
-        <table class="table table-striped mb-0 w-100">
-          <thead>
-            <tr>
-              <th>{% trans "Icon" %}</th>
-              <th>{% trans "Item Name" %}</th>
-              <th>{% trans "Desired Quantity" %}</th>
-              <th class="text-end"></th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for item in tracked_items %}
-              <tr>
-                <td><img src="https://images.evetech.net/types/{{ item.item.id }}/icon" alt="{% trans 'icon' %}" width="32"></td>
-                <td>{{ item.item.name }}</td>
-                <td>{{ item.effective_quantity|default:"—" }}{% if item.doctrine_quantity %}<div class="small text-muted">{% trans "Includes doctrine target" %}</div>{% endif %}</td>
-                <td class="text-end">
-                  <a href="?loc={{ selected_location.id }}&edit_id={{ item.id }}" class="btn btn-sm btn-secondary">✏️ {% trans "Edit" %}</a>
-                  <form method="post" action="{% url 'markettracker:delete_trackeditem' item.id %}?loc={{ selected_location.id }}" class="d-inline">
-                    {% csrf_token %}
-                    <button type="submit" class="btn btn-sm btn-danger">🗑️ {% trans "Delete" %}</button>
-                  </form>
-                </td>
-              </tr>
-            {% empty %}
-              <tr><td colspan="4">{% trans "No items to display." %}</td></tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  </div>
-
-  {# CONTRACTS CARD #}
-  <div class="card mt-4">
-    <div class="card-header d-flex justify-content-between align-items-center">
-      <strong>{% trans "Tracked Contracts" %}</strong>
-      <form method="get" class="d-flex gap-2 mb-0">
-        <input type="text" name="cq" value="{{ cq }}" class="form-control form-control-sm" placeholder="{% trans 'Search by ship/fit/title…' %}">
-        <button class="btn btn-primary btn-sm" type="submit">{% trans "Search" %}</button>
-        <a href="?loc={{ selected_location.id }}&tc_add=1" class="btn btn-success btn-sm">{% trans "Add" %}</a>
-      </form>
-    </div>
-    <div class="card-body p-0 card-body-scroll">
-      <div class="table-responsive table-scroll-1">
-        <table class="table table-striped mb-0 w-100">
-          <thead>
-            <tr>
-              <th>{% trans "Type" %}</th>
-              <th>{% trans "Name / Filter" %}</th>
-              <th>{% trans "Desired" %}</th>
-              <th>{% trans "Max price" %}</th>
-              <th class="text-end">{% trans "Actions" %}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for tcl in tracked_contracts_loc %}
-              <tr>
-                <td>
-                  {% if tcl.tracked_contract.mode == "custom" %}
-                    <span class="badge bg-info">{% trans "Custom" %}</span>
-                  {% else %}
-                    <span class="badge bg-secondary">{% trans "Doctrine" %}</span>
-                  {% endif %}
-                </td>
-                <td>
-                  {% if tcl.tracked_contract.mode == "custom" %}
-                    {{ tcl.tracked_contract.title_filter|default:"—" }}
-                  {% else %}
-                    {% if tcl.tracked_contract.fitting %}
-                      {{ tcl.tracked_contract.fitting.name }} <span class="text-muted">({{ tcl.tracked_contract.fitting.ship_type.name }})</span>
-                    {% else %}
-                      <span class="badge bg-danger">{% trans "Missing fitting" %}</span>
-                    {% endif %}
-                  {% endif %}
-                </td>
-                <td>{{ tcl.tracked_contract.desired_quantity|default:"—" }}</td>
-                <td>
-                  {% if tcl.tracked_contract.max_price and tcl.tracked_contract.max_price|floatformat != "0" %}
-                    {{ tcl.tracked_contract.max_price|floatformat:2|intcomma }} ISK
-                  {% else %}
-                    <span class="text-muted">—</span>
-                  {% endif %}
-                </td>
-                <td class="text-end">
-                  <a href="?loc={{ selected_location.id }}&tc_edit={{ tcl.tracked_contract.id }}" class="btn btn-sm btn-secondary">
-                    ✏️ {% trans "Edit" %}
-                  </a>
-                  <form method="post" action="{% url 'markettracker:tracked_contract_delete' tcl.tracked_contract.id %}?loc={{ selected_location.id }}" class="d-inline">
-                    {% csrf_token %}
-                    <button type="submit" class="btn btn-sm btn-danger">                            
-                      🗑️ {% trans "Delete" %}
-                    </button>
-                  </form>
-                </td>
-              </tr>
-            {% empty %}
-              <tr>
-                <td colspan="5" class="text-center text-muted py-4">{% trans "No tracked contracts yet." %}</td>
-              </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  </div>
-  
-
+{% elif management_section == 'contracts' %}
+  <div class="stock-section-heading"><div><h2 class="h5 mb-1">{% trans "Tracked contracts" %}</h2><p class="text-muted small mb-0">{% trans "Targets for complete fitted ships and custom contract matches." %}</p></div><a class="btn btn-primary btn-sm" href="{% querystring tc_add=1 %}"><i class="fa-solid fa-plus" aria-hidden="true"></i> {% trans "Add contract" %}</a></div>
+  <section class="card stock-list">
+    <form class="stock-filter-bar stock-search-row" method="get"><input type="hidden" name="loc" value="{{ selected_location.pk }}"><input type="hidden" name="section" value="contracts"><div class="stock-search"><label class="visually-hidden" for="stock-contract-search">{% trans "Search contracts" %}</label><i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i><input id="stock-contract-search" class="form-control form-control-sm" type="search" name="cq" value="{{ cq }}" placeholder="{% trans 'Search ships, fits or contract titles…' %}"></div><button class="btn btn-primary btn-sm" type="submit">{% trans "Apply" %}</button><a class="btn btn-outline-secondary btn-sm" href="?loc={{ selected_location.pk }}&amp;section=contracts">{% trans "Clear" %}</a></form>
+    <div class="table-responsive"><table class="table stock-table align-middle mb-0"><thead><tr><th>{% trans "Contract rule" %}</th><th>{% trans "Match" %}</th><th class="text-end">{% trans "Location target" %}</th><th class="text-end">{% trans "Maximum price" %}</th><th class="text-end">{% trans "Actions" %}</th></tr></thead><tbody>
+      {% for tcl in tracked_contracts_loc %}<tr><td><div class="stock-record"><span class="stock-record-icon"><i class="fa-solid fa-file-contract" aria-hidden="true"></i></span><div><span class="stock-record-name">{% if tcl.tracked_contract.mode == 'custom' %}{{ tcl.tracked_contract.title_filter }}{% elif tcl.tracked_contract.fitting %}{{ tcl.tracked_contract.fitting.name }}{% else %}{% trans "Missing fitting" %}{% endif %}</span>{% if tcl.tracked_contract.fitting %}<div class="stock-record-meta">{{ tcl.tracked_contract.fitting.ship_type.name }}</div>{% endif %}</div></div></td><td><span class="stock-source">{% if tcl.tracked_contract.mode == 'custom' %}{% trans "Title match" %}{% else %}{% trans "Fitting match" %}{% endif %}</span></td><td class="text-end stock-number fw-semibold">{{ tcl.desired_quantity|intcomma }}</td><td class="text-end stock-number">{% if tcl.tracked_contract.max_price %}{{ tcl.tracked_contract.max_price|compact_isk }}{% else %}<span class="text-muted small">{% trans "No limit" %}</span>{% endif %}</td><td><div class="stock-row-actions"><a class="btn btn-outline-secondary btn-sm" href="{% querystring tc_edit=tcl.tracked_contract_id %}">{% trans "Edit" %}</a><form method="post" action="{% url 'markettracker:tracked_contract_delete' tcl.tracked_contract_id %}?loc={{ selected_location.pk }}">{% csrf_token %}{% include "markettracker/includes/management/return_fields.html" %}<button class="btn btn-outline-danger btn-sm" type="submit">{% trans "Remove" %}</button></form></div></td></tr>
+      {% empty %}<tr><td colspan="5"><div class="stock-empty"><i class="fa-solid fa-file-contract" aria-hidden="true"></i><p>{% if cq %}{% trans "No contracts match this search." %}{% else %}{% trans "No tracked contracts yet." %}{% endif %}</p><span class="text-muted small">{% trans "Add a fitting match or a custom title rule for this location." %}</span></div></td></tr>{% endfor %}
+    </tbody></table></div>{% include "markettracker/includes/management/pagination.html" %}
+  </section>
 {% endif %}
 {% endblock %}

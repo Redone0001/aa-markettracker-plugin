@@ -1,0 +1,11 @@
+{% extends "markettracker/base.html" %}
+{% load i18n static %}
+{% block page_title %}{% trans "Manage stock" %}{% if location_title %} · {{ location_title }}{% endif %}{% endblock %}
+{% block extra_css %}{{ block.super }}<link rel="stylesheet" href="{% static 'markettracker/css/management.css' %}">{% endblock %}
+{% block content %}
+<div class="stock-management">
+  {% include "markettracker/includes/management/header.html" %}
+  {% block management_content %}{% endblock %}
+</div>
+{% endblock %}
+{% block extra_javascript %}{{ block.super }}<script src="{% static 'markettracker/js/management.js' %}"></script>{% endblock %}

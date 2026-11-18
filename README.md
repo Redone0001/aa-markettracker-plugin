@@ -180,8 +180,8 @@ or state permission management. Django superusers receive it automatically.
 
 ## Bulk tracked-item import
 
-Users with `markettracker.can_manage_stocks` can open **Manage Stock**, expand
-**Bulk upload tracked items**, and paste one item per line. Supported formats
+Users with `markettracker.can_manage_stocks` can open **Manage Stock → Items → Import items**
+and paste one item per line. Supported formats
 include:
 
 ```text
@@ -237,7 +237,7 @@ are rejected.
 
 ## Tracking item groups
 
-In **Manage Stock**, select a location and open **Item groups → Add group**.
+In **Manage Stock**, select a location and open **Groups → Add group**.
 Enter a name, select the items, and set a shared desired quantity. For example,
 a target of 100 with 30 units of one item and 50 of another shows 80 / 100,
 with 20 still needed. Only sell orders at the selected location count.
@@ -276,8 +276,8 @@ is needed for this feature.
 
 ## Doctrine and fitting seeding
 
-Open **Manage Stock → Manage doctrine seeding**, select a market location, and
-choose either a doctrine from Fittings or a standalone fitting. Set a default
+Open **Manage Stock → Doctrines → Track doctrine / fit**, select a market
+location, and choose either a doctrine from Fittings or a standalone fitting. Set a default
 ship target, save, then adjust each fitting's ship target. New fits added to a
 tracked doctrine inherit the default target; existing overrides are preserved.
 A ship target of zero pauses tracking for that fit.
@@ -338,7 +338,7 @@ or markup in either direction; missing prices stay last and filters are retained
 
 ## Create groups by matching stats
 
-In **Manage Stock → Item groups → Add group**, choose **Match item stats**,
+In **Manage Stock → Groups → Add group**, choose **Match item stats**,
 select a reference item, and choose the stats to compare. All stats are selected
 by default. Matching compares mass, volume, capacity, and the reference item's
 SDE dogma attributes exactly. With all stats selected, extra/missing attributes
@@ -357,3 +357,26 @@ independent of stat-matching work.
 After updating to this release, run `python manage.py migrate`,
 `python manage.py collectstatic --noinput`, and restart the web and Celery
 services before configuring doctrine tracking.
+
+
+## Stock management workspace
+
+**Manage Stock** uses one location selector and four sections: **Items**,
+**Groups**, **Doctrines**, and **Contracts**. Each section has its own list and
+consistent add/edit screens. Save, cancel, and remove actions return to the same
+location and filtered list. Lists use pages of 50 rows instead of nested scroll
+areas. **View market** opens the corresponding market view for that location.
+
+The Items and Groups lists distinguish **Manual target**, **Doctrine demand**,
+and **Effective target**. Group members with no individual minimum show
+**Shared**, linking to the group settings. Contract targets always show the
+quantity configured for the selected location.
+
+Use **Items → Import items** for bulk imports. In the Doctrines section, choose
+**Edit targets** to manage tracking settings and per-fit quantities side by side;
+automatic cleanup is in the collapsed settings below the doctrine list.
+
+**Market connection** contains character linking and refresh actions for all
+active markets. It is available to stock managers; refresh buttons become
+available after an admin market character is connected. Validation errors keep
+submitted values visible so they can be corrected without restarting the form.

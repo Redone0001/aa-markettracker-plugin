@@ -1,0 +1,36 @@
+{% load i18n %}
+<header class="stock-page-header">
+  <div><h1 class="h3 mb-1">{% trans "Manage stock" %}</h1><p class="text-muted small mb-0">{% trans "Set targets and choose what this market needs." %}</p></div>
+  <div class="stock-header-actions">
+    <form method="get" class="stock-location-form">
+      <input type="hidden" name="section" value="{{ management_section }}">
+      {% for key, value in preserved_filters %}<input type="hidden" name="{{ key }}" value="{{ value }}">{% endfor %}
+      <label class="visually-hidden" for="stock-location">{% trans "Market location" %}</label>
+      <select class="form-select form-select-sm" name="loc" id="stock-location" onchange="this.form.submit()" {% if not locations %}disabled{% endif %}>
+        {% for location in locations %}<option value="{{ location.pk }}" {% if location.pk == selected_location.pk %}selected{% endif %}>{{ location.display_name }}</option>{% empty %}<option>{% trans "No locations configured" %}</option>{% endfor %}
+      </select>
+    </form>
+    {% if selected_location %}<a class="btn btn-outline-secondary btn-sm" href="{% if management_section == 'doctrines' %}{% url 'markettracker:doctrine_list' %}{% elif management_section == 'contracts' %}{% url 'markettracker:contracts_list' %}{% else %}{% url 'markettracker:list_items' %}{% endif %}?loc={{ selected_location.pk }}"><i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i> {% trans "View market" %}</a>{% endif %}
+  </div>
+</header>
+{% if selected_location %}
+<div class="stock-utility-bar">
+  <details class="stock-connection">
+    <summary><i class="fa-solid fa-plug me-1" aria-hidden="true"></i>{% trans "Market connection" %} <span class="stock-connection-state">{% if market_character %}{{ market_character.character.character.character_name }}{% else %}{% trans "Not linked" %}{% endif %}</span></summary>
+    <div class="stock-connection-panel">
+      <div class="small text-muted">{% if market_character %}{% trans "Refreshes use this market character across all active locations." %}{% else %}{% trans "Connect a market character to fetch orders and contracts." %}{% endif %}</div>
+      <div class="d-flex flex-wrap gap-2 mt-2">
+        <a class="btn btn-outline-secondary btn-sm" href="{% url 'markettracker:character_login_manage' %}"><i class="fa-solid fa-user-astronaut" aria-hidden="true"></i> {% if market_character %}{% trans "Change character" %}{% else %}{% trans "Connect character" %}{% endif %}</a>
+        <form method="post" action="{% url 'markettracker:manage_stock' %}?loc={{ selected_location.pk }}">
+          {% csrf_token %}{% include "markettracker/includes/management/return_fields.html" %}
+          <button class="btn btn-outline-secondary btn-sm" name="refresh" type="submit" {% if not market_character %}disabled{% endif %}><i class="fa-solid fa-rotate" aria-hidden="true"></i> {% trans "Refresh items" %}</button>
+          <button class="btn btn-outline-secondary btn-sm" name="refresh_contracts" type="submit" {% if not market_character %}disabled{% endif %}><i class="fa-solid fa-rotate" aria-hidden="true"></i> {% trans "Refresh contracts" %}</button>
+        </form>
+      </div>
+    </div>
+  </details>
+</div>
+<nav class="stock-section-nav" aria-label="{% trans 'Stock management sections' %}">
+  {% for tab in management_tabs %}<a href="{{ tab.url }}" class="stock-section-link {% if tab.active %}active{% endif %}" {% if tab.active %}aria-current="page"{% endif %}><i class="fa-solid {{ tab.icon }}" aria-hidden="true"></i><span>{{ tab.label }}</span><span class="stock-count">{{ tab.count }}</span></a>{% endfor %}
+</nav>
+{% endif %}

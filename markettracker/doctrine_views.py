@@ -1,9 +1,9 @@
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required, permission_required
+from django.core.paginator import Paginator
 from django.db import transaction
 from django.http import HttpResponseBadRequest, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
-from django.urls import reverse
 from django.views.decorators.http import require_POST
 from eveuniverse.models import EveType
 
@@ -18,6 +18,7 @@ from .doctrines import (
 )
 from .models import DoctrineFitTarget, TrackedDoctrine, TrackedLocation
 from .stat_groups import stat_choices
+from .stock_management import management_context, management_return_url
 from .utils import get_selected_location, location_display_name
 
 
@@ -71,6 +72,30 @@ def manage_doctrines(request):
         else DoctrineFitTarget.objects.none()
     )
     formset = DoctrineFitTargetFormSet(queryset=targets)
+
+    def render_page():
+        page = Paginator(tracking_queryset(location.pk).order_by("pk"), 50).get_page(
+            request.GET.get("page")
+        )
+        return render(
+            request,
+            "markettracker/manage_doctrines.html",
+            {
+                **management_context(request, location, "doctrines"),
+                "tracking_form": form,
+                "target_formset": formset,
+                "editing": plan,
+                "show_tracking_form": bool(
+                    plan
+                    or "add" in request.GET
+                    or "save" in request.POST
+                    or "save_targets" in request.POST
+                ),
+                "tracked_doctrines": page.object_list,
+                "page_obj": page,
+            },
+        )
+
     original_plan_id = plan.pk if plan else None
     if request.method == "POST":
         try:
@@ -99,19 +124,9 @@ def manage_doctrines(request):
                         sync_doctrine_tracking(location.pk)
                         messages.success(request, "Ship targets saved.")
                         return redirect(
-                            f"{reverse('markettracker:manage_doctrines')}?loc={location.pk}&edit={plan.pk}"
+                            f"{management_return_url(request, location, 'doctrines')}&edit={plan.pk}"
                         )
-                    return render(
-                        request,
-                        "markettracker/manage_doctrines.html",
-                        {
-                            **_context(location),
-                            "tracking_form": form,
-                            "target_formset": formset,
-                            "editing": plan,
-                            "tracked_doctrines": tracking_queryset(location.pk),
-                        },
-                    )
+                    return render_page()
                 elif "save" in request.POST:
                     form = TrackedDoctrineForm(request.POST, instance=plan, location=location)
                     if form.is_valid():
@@ -121,7 +136,7 @@ def manage_doctrines(request):
                             request, "Doctrine tracking saved. Set individual ship targets below."
                         )
                         return redirect(
-                            f"{reverse('markettracker:manage_doctrines')}?loc={location.pk}&edit={plan.pk}"
+                            f"{management_return_url(request, location, 'doctrines')}&edit={plan.pk}"
                         )
                 elif "sync" in request.POST:
                     sync_doctrine_tracking(location.pk)
@@ -129,7 +144,7 @@ def manage_doctrines(request):
                     return HttpResponseBadRequest("Unknown action.")
             if not form.errors:
                 messages.success(request, "Doctrine tracking updated.")
-                return redirect(f"{reverse('markettracker:manage_doctrines')}?loc={location.pk}")
+                return redirect(management_return_url(request, location, "doctrines"))
         except ValueError as error:
             messages.error(request, str(error))
             # A failed sync rolls back the plan/settings too. Keep the form
@@ -141,17 +156,7 @@ def manage_doctrines(request):
                 instance=plan,
                 location=location,
             )
-    return render(
-        request,
-        "markettracker/manage_doctrines.html",
-        {
-            **_context(location),
-            "tracking_form": form,
-            "target_formset": formset,
-            "editing": plan,
-            "tracked_doctrines": tracking_queryset(location.pk),
-        },
-    )
+    return render_page()
 
 
 @login_required

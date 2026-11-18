@@ -9,6 +9,7 @@ from django.contrib.auth.decorators import login_required, permission_required
 from django.contrib.auth.mixins import LoginRequiredMixin, PermissionRequiredMixin
 from django.core.cache import cache
 from django.core.exceptions import PermissionDenied
+from django.core.paginator import Paginator
 from django.db import transaction
 from django.db.models import Count, Exists, Min, OuterRef, Q, Sum
 from django.http import HttpResponseBadRequest, JsonResponse
@@ -56,6 +57,7 @@ from .models import (
     TrackedItemGroup,
     TrackedLocation,
 )
+from .stock_management import management_context, management_return_url
 from .tasks import fetch_market_data_auto, refresh_contracts
 from .utils import contract_matches, get_selected_location, location_display_name
 
@@ -654,58 +656,98 @@ def list_items_view(request):
 def manage_stock_view(request):
     loc = get_selected_location(request)
     if not loc:
-        messages.error(request, _t("No locations configured. Please add one in admin."))
-        return redirect("markettracker:list_items")
+        return render(
+            request, "markettracker/manage_stock.html", management_context(request, None, "items")
+        )
+
+    section = request.GET.get("section", request.POST.get("section", "items"))
+    if section not in {"items", "groups", "contracts"}:
+        section = "items"
+    if any(key in request.GET for key in ("group_edit", "group_add")) or any(
+        key in request.POST for key in ("group_save", "group_delete")
+    ):
+        section = "groups"
+    elif any(key in request.GET for key in ("tc_add", "tc_edit")) or any(
+        key in request.POST for key in ("tc_add_submit", "tc_edit_submit")
+    ):
+        section = "contracts"
+    elif any(key in request.GET for key in ("add", "edit_id")) or any(
+        key in request.POST for key in ("add", "edit", "bulk_import")
+    ):
+        section = "items"
+
+    def back(target_section=section):
+        return redirect(management_return_url(request, loc, target_section))
 
     q = request.GET.get("q", "").strip()
-    cq = request.GET.get("cq", "")
+    cq = request.GET.get("cq", "").strip()
     selected_item_filters = normalize_item_filters(
         request.GET.getlist("item_type") + request.GET.getlist("module")
     )
     exclude_item_types = request.GET.get("exclude_item_types") == "1"
-    item_filters = _item_filter_options(selected_item_filters)
     bulk_import_form = BulkTrackedItemForm()
-    group_instance = None
-    group_id = request.POST.get("group_id") if request.method == "POST" else request.GET.get("group_edit")
-    if group_id:
-        group_instance = get_object_or_404(TrackedItemGroup, pk=group_id, location=loc)
-    group_form = TrackedItemGroupForm(instance=group_instance, location=loc)
-    if request.method == "POST" and "group_delete" in request.POST:
-        if group_instance is None:
-            return HttpResponseBadRequest()
-        try:
-            with transaction.atomic():
-                group_instance.delete()
-                sync_doctrine_tracking(loc.pk)
-        except ValueError as error:
-            messages.error(request, str(error))
-            return redirect(f"{reverse('markettracker:manage_stock')}?loc={loc.id}")
-        messages.success(request, _t("Item group deleted."))
-        return redirect(f"{reverse('markettracker:manage_stock')}?loc={loc.id}")
-    if request.method == "POST" and "group_save" in request.POST:
-        group_form = TrackedItemGroupForm(request.POST, instance=group_instance, location=loc)
-        if group_form.is_valid():
-            try:
-                with transaction.atomic():
-                    group_form.save()
-                    ensure_group_tracking(loc.pk)
-            except ValueError as error:
-                group_form.add_error(None, str(error))
-                if group_instance is None:
-                    group_form.instance.pk = None
-                    group_form.instance._state.adding = True
-            else:
-                messages.success(request, _t("Item group saved."))
-                return redirect(f"{reverse('markettracker:manage_stock')}?loc={loc.id}")
-
-
-    add_mode = "add" in request.GET
+    form, tc_form = None, None
     edit_id = request.GET.get("edit_id")
-
-    tc_add_mode = "tc_add" in request.GET
+    add_mode = "add" in request.GET
     tc_edit_id = request.GET.get("tc_edit")
+    tc_add_mode = "tc_add" in request.GET
+    group_id = (
+        request.POST.get("group_id") if request.method == "POST" else request.GET.get("group_edit")
+    )
+    group_instance = (
+        get_object_or_404(TrackedItemGroup, pk=group_id, location=loc) if group_id else None
+    )
+    group_form = TrackedItemGroupForm(instance=group_instance, location=loc)
 
     if request.method == "POST":
+        if "refresh" in request.POST or "refresh_contracts" in request.POST:
+            contracts = "refresh_contracts" in request.POST
+            task, key = (
+                (refresh_contracts, "contracts")
+                if contracts
+                else (fetch_market_data_auto, "market-data")
+            )
+            if _enqueue_refresh_once(task, key):
+                messages.success(
+                    request,
+                    _t("Contracts refresh started.")
+                    if contracts
+                    else _t("Market data refresh started."),
+                )
+            else:
+                messages.warning(request, _t("A refresh was already queued."))
+            target_section = request.POST.get("section", section)
+            return back(target_section)
+
+        if "group_delete" in request.POST:
+            if group_instance is None:
+                return HttpResponseBadRequest()
+            try:
+                with transaction.atomic():
+                    group_instance.delete()
+                    sync_doctrine_tracking(loc.pk)
+            except ValueError as error:
+                messages.error(request, str(error))
+            else:
+                messages.success(request, _t("Item group removed."))
+            return back("groups")
+
+        if "group_save" in request.POST:
+            group_form = TrackedItemGroupForm(request.POST, instance=group_instance, location=loc)
+            if group_form.is_valid():
+                try:
+                    with transaction.atomic():
+                        group_form.save()
+                        ensure_group_tracking(loc.pk)
+                except ValueError as error:
+                    group_form.add_error(None, str(error))
+                    if group_instance is None:
+                        group_form.instance.pk = None
+                        group_form.instance._state.adding = True
+                else:
+                    messages.success(request, _t("Item group saved."))
+                    return back("groups")
+
         if "bulk_import" in request.POST:
             bulk_import_form = BulkTrackedItemForm(request.POST)
             if bulk_import_form.is_valid():
@@ -714,9 +756,9 @@ def manage_stock_view(request):
                     messages.success(
                         request,
                         _t(
-                            "Bulk import complete: %(added)d added, %(updated)d updated, "
-                            "%(skipped)d existing items unchanged."
-                        ) % {
+                            "Bulk import complete: %(added)d added, %(updated)d updated, %(skipped)d existing items unchanged."
+                        )
+                        % {
                             "added": result.added,
                             "updated": result.updated,
                             "skipped": result.skipped,
@@ -724,236 +766,172 @@ def manage_stock_view(request):
                     )
                     if result.unknown_names:
                         displayed_names = result.unknown_names[:10]
-                        remaining_count = len(result.unknown_names) - len(displayed_names)
-                        unknown_message = _t("Unknown or unavailable item names: %(names)s") % {
+                        message = _t("Unknown or unavailable item names: %(names)s") % {
                             "names": ", ".join(displayed_names)
                         }
-                        if remaining_count:
-                            unknown_message += _t(" (and %(count)d more)") % {
-                                "count": remaining_count
-                            }
-                        messages.warning(request, unknown_message)
-                    return redirect(f"{reverse('markettracker:manage_stock')}?loc={loc.id}")
+                        remaining = len(result.unknown_names) - len(displayed_names)
+                        if remaining:
+                            message += _t(" (and %(count)d more)") % {"count": remaining}
+                        messages.warning(request, message)
+                    return back("items")
 
-        if "refresh" in request.POST:
-            if _enqueue_refresh_once(fetch_market_data_auto, "market-data"):
-                messages.success(request, _t("Market data refresh started."))
-            else:
-                messages.warning(request, _t("A market data refresh was already queued."))
-            return redirect(f"{reverse('markettracker:manage_stock')}?loc={loc.id}")
-
-        if "refresh_contracts" in request.POST:
-            if _enqueue_refresh_once(refresh_contracts, "contracts"):
-                messages.success(request, _t("Contracts refresh started."))
-            else:
-                messages.warning(request, _t("A contracts refresh was already queued."))
-            return redirect(f"{reverse('markettracker:manage_stock')}?loc={loc.id}")
-
-        # ------- Items -------
-        if "add" in request.POST:
-            form = TrackedItemForm(request.POST)
-            if form.is_valid():
-                obj = form.save(commit=False)
-                obj.location = loc
-                obj.manually_tracked = True
-                obj.save()
-                messages.success(request, _t("Item added successfully."))
-                return redirect(f"{reverse('markettracker:manage_stock')}?loc={loc.id}")
-            else:
-                for field, errs in form.errors.items():
-                    for err in errs:
-                        messages.error(request, f"{field}: {err}")
-                add_mode = True
-
-        if "edit" in request.POST:
-            tracked_item = get_object_or_404(
-                TrackedItem, pk=request.POST.get("item_id"), location=loc
+        if "add" in request.POST or "edit" in request.POST:
+            tracked_item = (
+                get_object_or_404(TrackedItem, pk=request.POST.get("item_id"), location=loc)
+                if "edit" in request.POST
+                else None
             )
-            form = TrackedItemForm(request.POST, instance=tracked_item)
+            form = TrackedItemForm(request.POST, instance=tracked_item, location=loc)
             if form.is_valid():
                 obj = form.save(commit=False)
                 obj.location = loc
                 obj.manually_tracked = True
                 obj.save()
-                messages.success(request, _t("Item updated successfully."))
-                return redirect(f"{reverse('markettracker:manage_stock')}?loc={loc.id}")
+                messages.success(request, _t("Item target saved."))
+                return back("items")
 
-        # ------- Contracts -------
-        if "tc_add_submit" in request.POST:
-            tc_form = TrackedContractForm(request.POST)
-            if tc_form.is_valid():
-                tc = tc_form.save(commit=False)
-                tc.created_by = request.user
-                tc.save()
-
-                desired = int(tc_form.cleaned_data.get("desired_quantity") or 0)
-
-                TrackedContractLocation.objects.update_or_create(
-                    tracked_contract=tc,
+        if "tc_add_submit" in request.POST or "tc_edit_submit" in request.POST:
+            tracked_location = (
+                get_object_or_404(
+                    TrackedContractLocation,
+                    tracked_contract_id=request.POST.get("tc_id"),
                     location=loc,
-                    defaults={
-                        "desired_quantity": desired,
-                        "is_active": True,
-                    }
                 )
-
-                messages.success(request, _t("Tracked contract added for this location."))
-                return redirect(f"{reverse('markettracker:manage_stock')}?loc={loc.id}")
-
-            tc_add_mode = True
-
-        if "tc_edit_submit" in request.POST:
-            tc_obj = get_object_or_404(TrackedContract, pk=request.POST.get("tc_id"))
+                if "tc_edit_submit" in request.POST
+                else None
+            )
+            tc_obj = tracked_location.tracked_contract if tracked_location else None
             tc_form = TrackedContractForm(request.POST, instance=tc_obj)
             if tc_form.is_valid():
-                tc = tc_form.save()
+                with transaction.atomic():
+                    tc = tc_form.save(commit=False)
+                    if not tc.pk:
+                        tc.created_by = request.user
+                    tc.save()
+                    TrackedContractLocation.objects.update_or_create(
+                        tracked_contract=tc,
+                        location=loc,
+                        defaults={
+                            "desired_quantity": tc_form.cleaned_data["desired_quantity"],
+                            "is_active": True,
+                        },
+                    )
+                messages.success(request, _t("Contract target saved for this location."))
+                return back("contracts")
+            tc_edit_id = tc_obj.pk if tc_obj else None
+            tc_add_mode = tc_obj is None
 
-                desired = int(tc_form.cleaned_data.get("desired_quantity") or 0)
-                TrackedContractLocation.objects.update_or_create(
-                    tracked_contract=tc,
-                    location=loc,
-                    defaults={
-                        "desired_quantity": desired,
-                        "is_active": True,
-                    }
-                )
+    # Keep bound forms after a failed submission, including field errors and values.
+    if form is None and section == "items":
+        if edit_id:
+            form = TrackedItemForm(
+                instance=get_object_or_404(TrackedItem, pk=edit_id, location=loc), location=loc
+            )
+        elif add_mode:
+            form = TrackedItemForm(location=loc)
+    if tc_form is None and section == "contracts":
+        if tc_edit_id:
+            tracked_location = get_object_or_404(
+                TrackedContractLocation, tracked_contract_id=tc_edit_id, location=loc
+            )
+            tc_form = TrackedContractForm(
+                instance=tracked_location.tracked_contract,
+                initial={"desired_quantity": tracked_location.desired_quantity},
+            )
+        elif tc_add_mode:
+            tc_form = TrackedContractForm()
 
-                messages.success(request, _t("Tracked contract updated for this location."))
-                return redirect(f"{reverse('markettracker:manage_stock')}?loc={loc.id}")
+    context = {
+        **management_context(request, loc, section),
+        "form": form,
+        "tc_form": tc_form,
+        "tc_add_mode": tc_add_mode,
+        "tc_edit_id": tc_edit_id,
+        "group_form": group_form,
+        "bulk_import_form": bulk_import_form,
+        "show_group_form": bool(group_instance or "group_add" in request.GET or group_form.errors),
+        "show_bulk_import": bool("import" in request.GET or bulk_import_form.errors),
+        "q": q,
+        "cq": cq,
+        "doctrine_only": request.GET.get("doctrine_only", ""),
+        "item_filters": _item_filter_options(selected_item_filters),
+        "exclude_item_types": exclude_item_types,
+        "has_item_type_filters": bool(selected_item_filters or exclude_item_types),
+    }
+    if (
+        form is not None
+        or tc_form is not None
+        or context["show_group_form"]
+        or context["show_bulk_import"]
+    ):
+        return render(request, "markettracker/manage_stock.html", context)
 
-            tc_edit_id = tc_obj.pk
-
-    # ---------- Forms display ----------
-    if edit_id:
-        _obj = get_object_or_404(TrackedItem, pk=edit_id, location=loc)
-        form = TrackedItemForm(instance=_obj)
-    elif add_mode:
-        form = TrackedItemForm()
-    else:
-        form = None
-
-    tc_form = None
-    if tc_add_mode:
-        tc_form = TrackedContractForm()
-    elif tc_edit_id:
-        _tc = get_object_or_404(TrackedContract, pk=tc_edit_id)
-        _tcl = TrackedContractLocation.objects.filter(tracked_contract=_tc, location=loc).first()
-        tc_form = TrackedContractForm(instance=_tc, initial={
-            "desired_quantity": getattr(_tcl, "desired_quantity", 0),
-        })
-
-    if form is not None or tc_form is not None:
-        market_character = (
-            MarketCharacter.objects.filter(type="admin").select_related("character", "character__character").first()
-            or MarketCharacter.objects.select_related("character", "character__character").first()
+    if section == "items":
+        sources = TrackedItem.doctrine_fits.through.objects.filter(trackeditem_id=OuterRef("pk"))
+        group_members = TrackedItemGroup.items.through.objects.filter(
+            evetype_id=OuterRef("item_id"), trackeditemgroup__location=loc
         )
-        locations = list(TrackedLocation.objects.filter(is_active=True).order_by("-is_default", "name"))
-        for location in locations:
-            location.display_name = location_display_name(location)
-
-        return render(
-            request,
-            "markettracker/manage_stock.html",
-            {
-                "form": form,
-                "tc_form": tc_form,
-                "tc_add_mode": tc_add_mode,
-                "tc_edit_id": tc_edit_id,
-                "market_character": market_character,
-                "locations": locations,
-                "selected_location": loc,
-                "location_title": location_display_name(loc),
-                "q": q,
-                "cq": cq,
-                "item_filters": item_filters,
-                "exclude_item_types": exclude_item_types,
-                "bulk_import_form": bulk_import_form,
-            "group_form": group_form,
-            "tracked_item_groups": TrackedItemGroup.objects.filter(location=loc).prefetch_related("items"),
-            },
+        tracked_items = (
+            TrackedItem.objects.filter(location=loc)
+            .select_related("item__eve_group")
+            .annotate(has_doctrine=Exists(sources), has_group=Exists(group_members))
+            .order_by("item__name", "pk")
         )
-
-    # ---------- Lists ----------
-    tracked_items = (
-        TrackedItem.objects
-        .filter(location=loc)
-        .select_related("item", "item__eve_group", "item__eve_group__eve_category")
-    )
-    tracked_items = _doctrine_item_filter(tracked_items, request)
-    if q:
+        tracked_items = _doctrine_item_filter(tracked_items, request)
         if q.lower().startswith("cat:"):
-            term = q.split(":", 1)[1].strip()
-            tracked_items = tracked_items.filter(item__eve_group__eve_category__name__icontains=term)
-        else:
-            if q.lower().startswith("fit:"):
-                fit_query = q.split(":", 1)[1].strip()
-                fit_qs = Fitting.objects.filter(name__icontains=fit_query).prefetch_related("items")
-                type_ids = set()
-                for f in fit_qs:
-                    for fi in f.items.all():
-                        tid = getattr(fi, "type_id", None)
-                        if tid:
-                            type_ids.add(int(tid))
-                tracked_items = tracked_items.filter(item_id__in=type_ids) if type_ids else tracked_items.none()
-            else:
-                tracked_items = tracked_items.filter(
-                    Q(item__name__icontains=q) |
-                    Q(item__eve_group__name__icontains=q) |
-                    Q(item__eve_group__eve_category__name__icontains=q)
-                )
-
-    tracked_items = _filter_tracked_items_by_type(
-        tracked_items,
-        selected_item_filters,
-        exclude_matches=exclude_item_types,
-    )
-
-    tracked_contracts_loc = (
-        TrackedContractLocation.objects
-        .filter(location=loc, is_active=True)
-        .select_related("tracked_contract", "tracked_contract__fitting", "tracked_contract__fitting__ship_type")
-        .order_by("tracked_contract__mode", "tracked_contract__title_filter", "tracked_contract__fitting__name")
-    )
-    if cq:
-        tracked_contracts_loc = tracked_contracts_loc.filter(
-            Q(tracked_contract__fitting__ship_type__name__icontains=cq) |
-            Q(tracked_contract__fitting__name__icontains=cq) |
-            Q(tracked_contract__title_filter__icontains=cq)
+            tracked_items = tracked_items.filter(
+                item__eve_group__eve_category__name__icontains=q.split(":", 1)[1].strip()
+            )
+        elif q.lower().startswith("fit:"):
+            fit_query = q.split(":", 1)[1].strip()
+            type_ids = set()
+            for fit in Fitting.objects.filter(name__icontains=fit_query).prefetch_related("items"):
+                type_ids.add(fit.ship_type_id)
+                type_ids.update(item.type_id for item in fit.items.all())
+            tracked_items = tracked_items.filter(item_id__in=type_ids)
+        elif q:
+            tracked_items = tracked_items.filter(
+                Q(item__name__icontains=q)
+                | Q(item__eve_group__name__icontains=q)
+                | Q(item__eve_group__eve_category__name__icontains=q)
+            )
+        tracked_items = _filter_tracked_items_by_type(
+            tracked_items, selected_item_filters, exclude_matches=exclude_item_types
         )
-
-    market_character = (
-        MarketCharacter.objects.filter(type="admin").select_related("character", "character__character").first()
-        or MarketCharacter.objects.select_related("character", "character__character").first()
-    )
-
-    locations = list(TrackedLocation.objects.filter(is_active=True).order_by("-is_default", "name"))
-    for location in locations:
-        location.display_name = location_display_name(location)
-
-    return render(
-        request,
-        "markettracker/manage_stock.html",
-        {
-            "form": None,
-            "tc_form": None,
-            "tc_add_mode": False,
-            "tc_edit_id": None,
-            "tracked_items": tracked_items,
-            "doctrine_only": request.GET.get("doctrine_only", ""),
-            "tracked_contracts_loc": tracked_contracts_loc,
-            "market_character": market_character,
-            "q": q,
-            "cq": cq,
-            "item_filters": item_filters,
-            "exclude_item_types": exclude_item_types,
-            "bulk_import_form": bulk_import_form,
-            "group_form": group_form,
-            "tracked_item_groups": TrackedItemGroup.objects.filter(location=loc).prefetch_related("items"),
-            "locations": locations,
-            "selected_location": loc,
-            "location_title": location_display_name(loc),
-        },
-    )
+        page = Paginator(tracked_items, 50).get_page(request.GET.get("page"))
+        context.update(tracked_items=page.object_list, page_obj=page)
+    elif section == "groups":
+        groups = (
+            TrackedItemGroup.objects.filter(location=loc)
+            .prefetch_related("items")
+            .order_by("name", "pk")
+        )
+        if q:
+            groups = groups.filter(Q(name__icontains=q) | Q(items__name__icontains=q)).distinct()
+        page = Paginator(groups, 50).get_page(request.GET.get("page"))
+        for group in page.object_list:
+            group.member_count = len(group.items.all())
+            group.more_members = max(group.member_count - 3, 0)
+        context.update(tracked_item_groups=page.object_list, page_obj=page)
+    else:
+        contracts = (
+            TrackedContractLocation.objects.filter(location=loc, is_active=True)
+            .select_related("tracked_contract__fitting__ship_type")
+            .order_by(
+                "tracked_contract__mode",
+                "tracked_contract__title_filter",
+                "tracked_contract__fitting__name",
+            )
+        )
+        if cq:
+            contracts = contracts.filter(
+                Q(tracked_contract__title_filter__icontains=cq)
+                | Q(tracked_contract__fitting__name__icontains=cq)
+                | Q(tracked_contract__fitting__ship_type__name__icontains=cq)
+            )
+        page = Paginator(contracts, 50).get_page(request.GET.get("page"))
+        context.update(tracked_contracts_loc=page.object_list, page_obj=page)
+    return render(request, "markettracker/manage_stock.html", context)
 
 
 @login_required
@@ -1008,7 +986,7 @@ def delete_trackeditem(request, pk):
     item.delete()
     messages.success(request, _t("Item deleted successfully."))
     if loc:
-        return redirect(f"{reverse('markettracker:manage_stock')}?loc={loc.id}")
+        return redirect(management_return_url(request, loc, "items"))
     return redirect("markettracker:manage_stock")
 
 
@@ -1029,7 +1007,7 @@ def tracked_contract_delete(request, pk):
         tracked_contract.save(update_fields=["is_active"])
     messages.success(request, _t("Tracked contract removed from this location."))
     if loc:
-        return redirect(f"{reverse('markettracker:manage_stock')}?loc={loc.id}")
+        return redirect(management_return_url(request, loc, "contracts"))
     return redirect("markettracker:manage_stock")
 
 
