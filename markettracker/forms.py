@@ -15,6 +15,8 @@ from .models import (
     TrackedItem,
     TrackedItemGroup,
 )
+from .sde_items import ensure_local_types
+from .stat_groups import matching_type_ids, stat_choices
 
 EXCLUDED_GROUP_IDS = [6, 1, 14]
 EXCLUDED_CATEGORIES = ["Blueprint", "SKINs"]
@@ -328,47 +330,138 @@ class DiscordMessageForm(forms.ModelForm):
 
 
 class TrackedItemGroupForm(forms.ModelForm):
+    group_mode = forms.ChoiceField(
+        choices=[("manual", _("Select items")), ("stats", _("Match item stats"))],
+        required=False,
+        initial="manual",
+        label=_("Group method"),
+    )
+    matching_stats = forms.MultipleChoiceField(
+        required=False,
+        label=_("Stats to match"),
+        widget=forms.CheckboxSelectMultiple,
+        help_text=_(
+            "All stats are selected by default. Clear individual stats to ignore them; an empty selection means all stats. Matches stay within the reference item's SDE group. Save again to refresh matches after an SDE update."
+        ),
+    )
+
     class Meta:
         model = TrackedItemGroup
-        fields = ["name", "items", "desired_quantity"]
+        fields = [
+            "name",
+            "group_mode",
+            "stats_reference",
+            "matching_stats",
+            "items",
+            "desired_quantity",
+        ]
         widgets = {
             "name": forms.TextInput(attrs={"class": "form-control"}),
-            "items": forms.SelectMultiple(attrs={
-                "class": "select-search-item",
-                "data-include-tracked": "1",
-                "data-placeholder": "Search and select items…",
-            }),
+            "items": forms.SelectMultiple(
+                attrs={
+                    "class": "select-search-item",
+                    "data-include-tracked": "1",
+                    "data-placeholder": "Search and select items…",
+                }
+            ),
             "desired_quantity": forms.NumberInput(attrs={"class": "form-control", "min": 0}),
+            "stats_reference": forms.Select(
+                attrs={"class": "select-search-item", "data-include-tracked": "1"}
+            ),
         }
         help_texts = {
-            "desired_quantity": _("Shared target for the sum of all selected items on the market at this location."),
+            "desired_quantity": _(
+                "Shared target for the sum of all selected items on the market at this location."
+            ),
             "items": _("Select multiple items. Existing individual targets remain independent."),
         }
 
     def __init__(self, *args, location, **kwargs):
         super().__init__(*args, **kwargs)
         self.instance.location = location
+        self.fields["items"].required = False
+        reference_id = (
+            self.data.get("stats_reference") if self.is_bound else self.instance.stats_reference_id
+        )
+        reference_id = int(reference_id) if str(reference_id).isdigit() else None
+        self.fields["stats_reference"].queryset = EveType.objects.filter(
+            pk=reference_id, published=True
+        )
+        self.fields["matching_stats"].choices = stat_choices(reference_id) if reference_id else []
+        if not self.is_bound and reference_id:
+            self.initial["group_mode"] = "stats"
+            self.initial["matching_stats"] = self.instance.matching_stats or [
+                key for key, _ in self.fields["matching_stats"].choices
+            ]
         ids = self.instance.items.values_list("pk", flat=True) if self.instance.pk else []
         if self.is_bound:
-            ids = [int(value) for value in self.data.getlist(self.add_prefix("items")) if str(value).isdigit()]
+            ids = [
+                int(value)
+                for value in self.data.getlist(self.add_prefix("items"))
+                if str(value).isdigit()
+            ]
         self.fields["items"].queryset = EveType.objects.filter(
             pk__in=ids, published=True, name__isnull=False
         )
 
     def clean_name(self):
         name = self.cleaned_data["name"].strip()
-        if TrackedItemGroup.objects.filter(location=self.instance.location, name=name).exclude(pk=self.instance.pk).exists():
-            raise forms.ValidationError(_("A group with this name already exists at this location."))
+        if (
+            TrackedItemGroup.objects.filter(location=self.instance.location, name=name)
+            .exclude(pk=self.instance.pk)
+            .exists()
+        ):
+            raise forms.ValidationError(
+                _("A group with this name already exists at this location.")
+            )
         return name
+
+    def clean(self):
+        data = super().clean()
+        if data.get("group_mode") == "stats":
+            reference = data.get("stats_reference")
+            if reference is None:
+                self.add_error("stats_reference", _("Select a reference item."))
+            else:
+                try:
+                    selected = data.get("matching_stats", [])
+                    if set(selected) == {key for key, _ in self.fields["matching_stats"].choices}:
+                        # Keep "all" dynamic when the SDE adds reference stats.
+                        data["matching_stats"] = []
+                    self.matched_ids = matching_type_ids(
+                        reference.pk, data.get("matching_stats", [])
+                    )
+                except ValueError as error:
+                    self.add_error("stats_reference", str(error))
+        elif not data.get("items"):
+            self.add_error("items", _("Select at least one item."))
+        return data
+
+    def save(self, commit=True):
+        if not commit:
+            raise ValueError("Item groups must be saved with commit=True.")
+        if self.cleaned_data.get("group_mode") == "stats":
+            ensure_local_types(self.matched_ids)
+            self.cleaned_data["items"] = EveType.objects.filter(pk__in=self.matched_ids)
+        else:
+            self.instance.stats_reference = None
+            self.instance.matching_stats = []
+        return super().save(commit=True)
 
 
 class MarkupFilterForm(forms.Form):
     markup_min = forms.DecimalField(
-        label=_("Minimum markup (%)"), required=False, max_digits=12, decimal_places=2,
+        label=_("Minimum markup (%)"),
+        required=False,
+        max_digits=12,
+        decimal_places=2,
         widget=forms.NumberInput(attrs={"class": "form-control form-control-sm", "step": "0.01"}),
     )
     markup_max = forms.DecimalField(
-        label=_("Maximum markup (%)"), required=False, max_digits=12, decimal_places=2,
+        label=_("Maximum markup (%)"),
+        required=False,
+        max_digits=12,
+        decimal_places=2,
         widget=forms.NumberInput(attrs={"class": "form-control form-control-sm", "step": "0.01"}),
     )
 

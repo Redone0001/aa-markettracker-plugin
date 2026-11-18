@@ -61,6 +61,7 @@
     {# zachowaj filtry po zmianie lokacji #}
   {% if q %}<input type="hidden" name="q" value="{{ q }}">{% endif %}
   {% if cq %}<input type="hidden" name="cq" value="{{ cq }}">{% endif %}
+  {% if doctrine_only %}<input type="hidden" name="doctrine_only" value="{{ doctrine_only }}">{% endif %}
   {% for item_filter in item_filters %}
     {% if item_filter.selected %}
       <input type="hidden" name="item_type" value="{{ item_filter.key }}">
@@ -162,6 +163,7 @@
 {# ============ NORMALNY WIDOK Z LISTAMI ============ #}
 {% else %}
   <h1 class="mb-4">{% trans "Manage Stock" %}</h1>
+  <a class="btn btn-primary mb-3" href="{% url 'markettracker:manage_doctrines' %}?loc={{ selected_location.pk }}">{% trans "Manage doctrine seeding" %}</a>
 
   <section class="card my-3">
     <h2 class="card-header h5">{% trans "Item groups" %}</h2>
@@ -169,9 +171,10 @@
       <p>{% trans "A group has one desired quantity shared across all its items at this location." %}</p>
       <details {% if group_form.errors or group_form.instance.pk %}open{% endif %}>
         <summary>{% if group_form.instance.pk %}{% trans "Edit group" %}{% else %}{% trans "Add group" %}{% endif %}</summary>
-        <form method="post" action="?loc={{ selected_location.pk }}" class="my-3">
+        <form method="post" action="?loc={{ selected_location.pk }}" class="my-3" data-stat-choices-url="{% url 'markettracker:item_stat_choices' %}">
           {% csrf_token %}
-          {{ group_form.as_p }}
+          {{ group_form.non_field_errors }}
+          {% for field in group_form %}<div class="mb-3" data-group-field="{{ field.name }}">{{ field.label_tag }} {{ field }}{{ field.errors }}{% if field.help_text %}<p class="small text-muted">{{ field.help_text }}</p>{% endif %}</div>{% endfor %}
           {% if group_form.instance.pk %}<input type="hidden" name="group_id" value="{{ group_form.instance.pk }}">{% endif %}
           <button class="btn btn-primary" name="group_save" type="submit">{% trans "Save group" %}</button>
           <a class="btn btn-secondary" href="?loc={{ selected_location.pk }}">{% trans "Cancel" %}</a>
@@ -181,7 +184,7 @@
         <table class="table">
           <thead><tr><th>{% trans "Group" %}</th><th>{% trans "Items" %}</th><th>{% trans "Desired quantity" %}</th><th>{% trans "Actions" %}</th></tr></thead>
           <tbody>{% for group in tracked_item_groups %}
-            <tr><td>{{ group.name }}</td><td>{% for item in group.items.all %}{{ item.name }}{% if not forloop.last %}, {% endif %}{% endfor %}</td><td>{{ group.desired_quantity }}</td>
+            <tr><td>{{ group.name }}{% if group.stats_reference_id %}<div class="small text-muted">{% trans "Matched by stats" %}</div>{% endif %}</td><td>{% for item in group.items.all %}{{ item.name }}{% if not forloop.last %}, {% endif %}{% endfor %}</td><td>{{ group.effective_quantity }}</td>
               <td><a class="btn btn-sm btn-primary" href="?loc={{ selected_location.pk }}&group_edit={{ group.pk }}">{% trans "Edit" %}</a>
                 <form method="post" action="?loc={{ selected_location.pk }}" class="d-inline">
                   {% csrf_token %}<input type="hidden" name="group_id" value="{{ group.pk }}">
@@ -256,6 +259,7 @@
         <input type="hidden" name="loc" value="{{ selected_location.id }}">
         {% if cq %}<input type="hidden" name="cq" value="{{ cq }}">{% endif %}
         {% include "markettracker/includes/item_filter_controls.html" with item_filter_id_prefix="manage-item-filter" %}
+        {% include "markettracker/includes/doctrine_item_filter.html" %}
         <input
           type="text"
           name="q"
@@ -287,7 +291,7 @@
               <tr>
                 <td><img src="https://images.evetech.net/types/{{ item.item.id }}/icon" alt="{% trans 'icon' %}" width="32"></td>
                 <td>{{ item.item.name }}</td>
-                <td>{{ item.desired_quantity|default:"—" }}</td>
+                <td>{{ item.effective_quantity|default:"—" }}{% if item.doctrine_quantity %}<div class="small text-muted">{% trans "Includes doctrine target" %}</div>{% endif %}</td>
                 <td class="text-end">
                   <a href="?loc={{ selected_location.id }}&edit_id={{ item.id }}" class="btn btn-sm btn-secondary">✏️ {% trans "Edit" %}</a>
                   <form method="post" action="{% url 'markettracker:delete_trackeditem' item.id %}?loc={{ selected_location.id }}" class="d-inline">

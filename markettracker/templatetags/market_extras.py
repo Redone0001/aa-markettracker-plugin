@@ -6,6 +6,14 @@ from markettracker.models import TrackedItem
 
 register = template.Library()
 
+
+@register.simple_tag(takes_context=True)
+def item_sort_url(context, column):
+    query = context["request"].GET.copy()
+    query["sort"] = column
+    query["direction"] = "desc" if context.get("sort") == column and context.get("direction") != "desc" else "asc"
+    return "?" + query.urlencode()
+
 _COMPACT_ISK_UNITS = (
     (Decimal("1"), ""),
     (Decimal("1000"), "K"),

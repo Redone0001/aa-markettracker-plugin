@@ -1,0 +1,2 @@
+<label class="small" for="doctrine-item-filter">{% load i18n %}{% trans "Part of a doctrine / fit" %}
+<select id="doctrine-item-filter" name="doctrine_only" class="form-select form-select-sm w-auto"><option value="">{% trans "All items" %}</option><option value="yes" {% if doctrine_only == 'yes' %}selected{% endif %}>{% trans "Yes" %}</option><option value="no" {% if doctrine_only == 'no' %}selected{% endif %}>{% trans "No" %}</option></select></label>

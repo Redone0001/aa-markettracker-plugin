@@ -272,7 +272,7 @@ def fetch_market_data_for_location(character_id: int, location_pk: int):
                 )
                 total_volume = cursor.fetchone()[0] or 0
 
-                desired = int(ti.desired_quantity or 0)
+                desired = int(ti.effective_quantity or 0)
                 if desired <= 0:
                     percentage = 100
                     new_status = "OK"
@@ -502,7 +502,7 @@ def fetch_market_data(character_id: int):
                 )
                 total_volume = cursor.fetchone()[0] or 0
 
-                desired = int(ti.desired_quantity or 0)
+                desired = int(ti.effective_quantity or 0)
                 if desired <= 0:
                     # if desired=0 treat as OK (we do not monitor quantity)
                     percentage = 100

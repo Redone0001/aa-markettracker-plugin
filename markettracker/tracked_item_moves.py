@@ -74,7 +74,12 @@ def move_tracked_items(queryset, target_location):
         TrackedItem.objects.filter(pk__in=moved_ids).update(
             location=target_location,
             last_status="OK",
+            doctrine_quantity=0,
+            manually_tracked=True,
         )
+        # Doctrine targets belong to the source location. Moving a manual item
+        # rule must not transfer that doctrine's provenance or derived target.
+        TrackedItem.doctrine_fits.through.objects.filter(trackeditem_id__in=moved_ids).delete()
 
     return MoveTrackedItemsResult(
         moved_ids=tuple(moved_ids),

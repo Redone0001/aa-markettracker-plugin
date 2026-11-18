@@ -273,3 +273,85 @@ Refresh attempts are throttled to once per minute across locations. Last good
 prices live in Django's cache until eviction or cache clearing; no API key or
 an unavailable cache entry simply means no new reference price. No migration
 is needed for this feature.
+
+## Doctrine and fitting seeding
+
+Open **Manage Stock → Manage doctrine seeding**, select a market location, and
+choose either a doctrine from Fittings or a standalone fitting. Set a default
+ship target, save, then adjust each fitting's ship target. New fits added to a
+tracked doctrine inherit the default target; existing overrides are preserved.
+A ship target of zero pauses tracking for that fit.
+
+Tracking is private by default. **Share with market members** explicitly exposes
+the selected doctrine/fit and its contents to everyone with
+`markettracker.basic_access`, even if its Fittings categories restrict access.
+Stock managers can see private tracking. Unselected doctrines are never added
+to the doctrine market view.
+
+**Doctrines** shows collapsed doctrine entries with market coverage, expandable
+ships and bottlenecks, the number of complete fits available, and the cheapest
+complete-fit price in compact ISK. Only sell orders at the selected tracked
+location count. The price consumes the cheapest order stacks first, respecting
+available quantities; it is unavailable if a complete fit cannot be assembled.
+Coverage is the greatest whole percentage of all the doctrine's ship targets
+that available stock can support, rounded conservatively. Shared modules and
+overlapping substitution groups cannot spend the same stock twice. Each ship's
+available count, and each doctrine's coverage, is evaluated independently of
+other ships/doctrines; these figures are not stock reservations.
+
+A module, drone, charge, or cargo item in an existing item group can use any
+member of that group. Quantities for multiple components using the same group
+are combined. Hulls remain exact. If an item belongs to several groups, the
+smallest group is used; ties prefer the oldest group. Group names appear in the
+component breakdown so admins can check which alternatives are being used.
+
+**Buy all** copies an EVE Multibuy list for the selected number of complete fits
+(default: one). **Buy missing** copies the component shortages against that
+ship's configured market target. Both choose the cheapest local alternatives;
+if a component has no priced alternative, its original fitting item is used
+and the page reports the missing price. Paste the list into EVE to buy it.
+These buttons do not place orders or read a pilot's assets.
+
+Fitting contents, doctrine membership, and derived item/group targets synchronize
+before each existing market-order refresh. **Sync now** applies source changes
+immediately without fetching ESI orders. No additional periodic task is needed.
+Required hulls and components are copied from the installed SDE into the local
+EVE Universe tables in batches, without one ESI request per type.
+
+Manual targets remain independent: an item's/group's effective minimum is the
+larger of its manual target and the summed doctrine target. Alternative groups
+receive one combined doctrine target, rather than that target for every member.
+Existing tracking rules remain manual. Explicit item edits and bulk imports
+also preserve manual tracking. Moving an item rule between locations moves its
+manual target only; doctrine targets stay with their configured location and
+recreate any required source items on the next synchronization.
+
+The per-location **Automatic item cleanup** setting defaults to off. When enabled,
+synchronization removes only automatically added items with no remaining
+tracked doctrine/fit source and no item-group membership at that location.
+Manual items remain, including manual targets of zero. The item list and stock
+management list have a **Part of a doctrine / fit: Yes / No** filter. Click item
+list column headings to sort names, stock, targets, minimum prices, Jita prices,
+or markup in either direction; missing prices stay last and filters are retained.
+
+## Create groups by matching stats
+
+In **Manage Stock → Item groups → Add group**, choose **Match item stats**,
+select a reference item, and choose the stats to compare. All stats are selected
+by default. Matching compares mass, volume, capacity, and the reference item's
+SDE dogma attributes exactly. With all stats selected, extra/missing attributes
+also prevent a match. Selecting a subset ignores other attributes. An empty
+selection also means all stats.
+
+Candidates are published items in the reference item's SDE group. Matches can
+include items not previously loaded into EVE Universe. Matching uses the local
+SDE, never per-item ESI calls, and is performed only when the admin saves the
+group. Stored membership is reused for market requests and doctrine calculations;
+save the group again to refresh it after an SDE update. Matches are capped at
+1,000 members, and missing reference/dogma data produces a validation message.
+This avoids repeated full-universe comparisons and keeps ordinary market views
+independent of stat-matching work.
+
+After updating to this release, run `python manage.py migrate`,
+`python manage.py collectstatic --noinput`, and restart the web and Celery
+services before configuring doctrine tracking.

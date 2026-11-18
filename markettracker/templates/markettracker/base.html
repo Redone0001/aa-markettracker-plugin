@@ -13,6 +13,7 @@
 
 {% block header_nav_collapse_left %}
     {{ block.super }}
+    <a class="nav-link {% navactive request 'markettracker:doctrine_list' %}" href="{% url 'markettracker:doctrine_list' %}">{% trans "Doctrines" %}</a>
     <a
         class="nav-link {% navactive request 'markettracker:list_items' %}"
         href="{% url 'markettracker:list_items' %}"
@@ -161,6 +162,7 @@ html.dark .filter-clear-btn,
 {% block extra_javascript %}
     {{ block.super }}
     <script src="{% static 'markettracker/vendor/select2-4.0.13.min.js' %}"></script>
+    <script src="{% static 'markettracker/js/stat_groups.js' %}"></script>
 
     <script>
     $(function() {
@@ -177,7 +179,7 @@ html.dark .filter-clear-btn,
             delay: 250,
             data: function (params) {
               return {
-                include_tracked: $items.data("include-tracked") || "0",
+                include_tracked: $(this).data("include-tracked") || "0",
                 q: params.term,
                 page: params.page || 1,
                 loc: "{{ selected_location.id }}"

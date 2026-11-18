@@ -195,6 +195,9 @@ def import_tracked_items(location, entries, multiplier=1, overwrite_amount=False
             skipped += 1
 
     TrackedItem.objects.bulk_create(additions)
+    # Explicitly importing an existing automatic item makes it a manual rule,
+    # even when its quantity is intentionally left unchanged.
+    TrackedItem.objects.filter(pk__in=[row.pk for row in existing.values()]).update(manually_tracked=True)
     if updates:
         TrackedItem.objects.bulk_update(updates, ["desired_quantity"])
 

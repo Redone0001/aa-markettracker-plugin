@@ -198,6 +198,13 @@ class TrackedLocation(models.Model):
     is_default = models.BooleanField(default=False)
     is_active = models.BooleanField(default=True)
 
+    remove_unused_doctrine_items = models.BooleanField(
+        default=False,
+        help_text=_(
+            "Remove automatically tracked items after their last doctrine/fit is removed. Manual items and item groups are preserved."
+        ),
+    )
+
     class Meta:
         default_permissions = ()
         unique_together = (("scope", "location_id"),)
@@ -206,19 +213,22 @@ class TrackedLocation(models.Model):
         return f"{self.name} ({self.scope}:{self.location_id})"
 
 
-
 class TrackedItem(models.Model):
     item = models.ForeignKey(
         "eveuniverse.EveType", on_delete=models.CASCADE, verbose_name=_("Item")
     )
     desired_quantity = models.IntegerField(default=0, verbose_name=_("Desired quantity"))
+    manually_tracked = models.BooleanField(default=True)
+    doctrine_quantity = models.PositiveBigIntegerField(default=0)
+    doctrine_fits = models.ManyToManyField(
+        "DoctrineFitTarget", related_name="tracked_items", blank=True
+    )
     last_status = models.CharField(max_length=10, default="OK", verbose_name=_("Last status"))
     location = models.ForeignKey(
         "markettracker.TrackedLocation",
         on_delete=models.CASCADE,
         related_name="tracked_items",
     )
-
 
     class Meta:
         unique_together = ("item", "location")
@@ -233,6 +243,60 @@ class TrackedItem(models.Model):
     def __str__(self):
         return self.item.name
 
+    @property
+    def effective_quantity(self):
+        return max(self.desired_quantity, self.doctrine_quantity)
+
+
+class TrackedDoctrine(models.Model):
+    """An explicit opt-in to seeding a doctrine or a standalone fitting."""
+
+    location = models.ForeignKey(
+        TrackedLocation, on_delete=models.CASCADE, related_name="doctrine_tracking"
+    )
+    doctrine = models.ForeignKey(
+        "fittings.Doctrine", null=True, blank=True, on_delete=models.CASCADE
+    )
+    fitting = models.ForeignKey("fittings.Fitting", null=True, blank=True, on_delete=models.CASCADE)
+    default_quantity = models.PositiveIntegerField(default=1)
+    is_shared = models.BooleanField(
+        default=False,
+        help_text=_(
+            "Show this doctrine/fit to MarketTracker members. Leave unchecked for private tracking."
+        ),
+    )
+
+    class Meta:
+        default_permissions = ()
+        constraints = [
+            models.CheckConstraint(
+                condition=(
+                    models.Q(doctrine__isnull=False, fitting__isnull=True)
+                    | models.Q(doctrine__isnull=True, fitting__isnull=False)
+                ),
+                name="mt_doctrine_or_fit",
+            ),
+            models.UniqueConstraint(fields=["location", "doctrine"], name="mt_doctrine_location"),
+            models.UniqueConstraint(fields=["location", "fitting"], name="mt_fit_location"),
+        ]
+
+    def __str__(self):
+        return str(self.doctrine or self.fitting)
+
+
+class DoctrineFitTarget(models.Model):
+    tracking = models.ForeignKey(
+        TrackedDoctrine, on_delete=models.CASCADE, related_name="fit_targets"
+    )
+    fitting = models.ForeignKey("fittings.Fitting", on_delete=models.CASCADE)
+    desired_quantity = models.PositiveIntegerField(default=1)
+
+    class Meta:
+        default_permissions = ()
+        constraints = [
+            models.UniqueConstraint(fields=["tracking", "fitting"], name="mt_doctrine_fit_target")
+        ]
+
 
 class TrackedItemGroup(models.Model):
     name = models.CharField(max_length=255)
@@ -241,6 +305,11 @@ class TrackedItemGroup(models.Model):
     )
     items = models.ManyToManyField("eveuniverse.EveType", related_name="market_tracking_groups")
     desired_quantity = models.PositiveIntegerField(default=0)
+    doctrine_quantity = models.PositiveBigIntegerField(default=0)
+    stats_reference = models.ForeignKey(
+        "eveuniverse.EveType", null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
+    )
+    matching_stats = models.JSONField(default=list, blank=True)
     last_status = models.CharField(max_length=10, default="OK")
 
     class Meta:
@@ -252,6 +321,10 @@ class TrackedItemGroup(models.Model):
 
     def __str__(self):
         return self.name
+
+    @property
+    def effective_quantity(self):
+        return max(self.desired_quantity, self.doctrine_quantity)
 
 
 class MarketOrderSnapshot(models.Model):

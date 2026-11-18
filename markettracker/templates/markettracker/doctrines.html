@@ -1,0 +1,42 @@
+{% extends "markettracker/base.html" %}
+{% load i18n market_extras static %}
+{% block content %}
+<div class="d-flex flex-wrap gap-3 justify-content-between align-items-center mb-3">
+  <h1>{% trans "Doctrine market coverage" %}</h1>
+  {% if perms.markettracker.can_manage_stocks %}<a class="btn btn-primary" href="{% url 'markettracker:manage_doctrines' %}?loc={{ selected_location.pk }}">{% trans "Manage doctrine tracking" %}</a>{% endif %}
+</div>
+<form method="get" class="mb-3"><label for="doctrine-location">{% trans "Location" %}</label>
+  <select id="doctrine-location" name="loc" class="form-select w-auto" onchange="this.form.submit()">{% for location in locations %}<option value="{{ location.pk }}" {% if location.pk == selected_location.pk %}selected{% endif %}>{{ location.display_name }}</option>{% endfor %}</select>
+</form>
+<p class="text-muted">{% trans "Coverage measures the proportion of all ship targets supported by current sell orders, including shared modules. Each ship's available count is measured independently. Prices use the cheapest available orders, including group alternatives." %}</p>
+<p class="text-muted">{% trans "Buy missing copies shortages against that ship's market target. Buy all copies the selected number of complete fits. Paste the list into EVE Multibuy to purchase." %}</p>
+<div id="doctrine-buy-status" class="alert alert-info d-none" role="status"></div>
+{% for entry in doctrines %}
+<details class="card mb-3">
+  <summary class="card-header py-3"><strong>{{ entry.plan }}</strong> <span class="badge {% if entry.coverage == 100 %}bg-success{% elif entry.coverage <= 25 %}bg-danger{% else %}bg-warning text-dark{% endif %}">{{ entry.coverage }}% {% trans "covered on market" %}</span>{% if not entry.plan.is_shared %} <span class="badge bg-secondary">{% trans "Private" %}</span>{% endif %}</summary>
+  <div class="card-body">
+  {% for ship in entry.ships %}
+    <div class="border-bottom pb-3 mb-3">
+      <div class="d-flex flex-wrap gap-3 align-items-center justify-content-between">
+        <div><strong>{{ ship.target.fitting.ship_type.name }} — {{ ship.target.fitting.name }}</strong><div>{{ ship.available }} {% trans "complete fits on market" %} / {{ ship.target.desired_quantity }} {% trans "target" %}</div>
+          <div>{% trans "Cheapest complete fit:" %} {% if ship.price != None %}{{ ship.price|compact_isk }}{% else %}<span class="text-muted">{% trans "Incomplete stock — price unavailable" %}</span>{% endif %}</div>
+        </div>
+        <form class="doctrine-buy-form d-flex flex-wrap gap-2 align-items-center" method="post" action="{% url 'markettracker:doctrine_multibuy' ship.target.pk %}?loc={{ selected_location.pk }}">
+          {% csrf_token %}
+          <button class="btn btn-outline-primary" type="submit" name="mode" value="missing">{% trans "Buy missing" %}</button>
+          <label class="small" for="buy-amount-{{ ship.target.pk }}">{% trans "Fits" %}</label><input class="form-control w-auto" style="max-width:6rem" id="buy-amount-{{ ship.target.pk }}" name="amount" type="number" min="1" max="1000000" value="1" required>
+          <button class="btn btn-primary" type="submit" name="mode" value="all">{% trans "Buy all" %}</button>
+        </form>
+      </div>
+      <details class="mt-2"><summary>{% trans "Bottlenecks and components" %}</summary>
+        <div class="table-responsive"><table class="table table-sm"><thead><tr><th>{% trans "Item / substitution group" %}</th><th>{% trans "Market stock" %}</th><th>{% trans "Target units" %}</th><th>{% trans "Missing" %}</th><th>{% trans "Fits supported" %}</th></tr></thead>
+          <tbody>{% for line in ship.bottlenecks %}<tr class="{% if line.need %}table-warning{% endif %}"><td>{{ line.name }}</td><td>{{ line.stock }}</td><td>{{ line.required }}</td><td>{{ line.need }}</td><td>{{ line.fits }}</td></tr>{% endfor %}</tbody>
+        </table></div>
+      </details>
+    </div>
+  {% empty %}<p>{% trans "No ships have a positive target in this doctrine." %}</p>{% endfor %}
+  </div>
+</details>
+{% empty %}<div class="alert alert-info">{% trans "No shared doctrines are tracked at this location yet." %}</div>{% endfor %}
+{% endblock %}
+{% block extra_javascript %}{{ block.super }}<script src="{% static 'markettracker/js/doctrines.js' %}"></script>{% endblock %}

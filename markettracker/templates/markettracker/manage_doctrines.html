@@ -1,0 +1,27 @@
+{% extends "markettracker/base.html" %}
+{% load i18n %}
+{% block content %}
+<div class="d-flex flex-wrap gap-3 justify-content-between align-items-center mb-3"><h1>{% trans "Manage doctrine seeding" %}</h1><a class="btn btn-secondary" href="{% url 'markettracker:doctrine_list' %}?loc={{ selected_location.pk }}">{% trans "Market coverage" %}</a></div>
+<form method="get" class="mb-3"><label for="manage-doctrine-location">{% trans "Location" %}</label><select id="manage-doctrine-location" name="loc" class="form-select w-auto" onchange="this.form.submit()">{% for location in locations %}<option value="{{ location.pk }}" {% if location.pk == selected_location.pk %}selected{% endif %}>{{ location.display_name }}</option>{% endfor %}</select></form>
+<p>{% trans "Select only the doctrines or fits to seed here. Tracking is private by default. Sharing makes the doctrine and its fits visible to everyone with market access, including fits restricted in the Fittings module." %}</p>
+<p class="text-muted">{% trans "Fitting contents and doctrine membership synchronize during market refreshes. Use Sync now after editing a doctrine to update tracking immediately; fresh stock arrives with the next market refresh." %}</p>
+<div class="card mb-3"><h2 class="card-header h5">{% if editing %}{% trans "Edit tracking" %}: {{ editing }}{% else %}{% trans "Track a doctrine or fit" %}{% endif %}</h2><div class="card-body">
+<form method="post" action="?loc={{ selected_location.pk }}">{% csrf_token %}{% if editing %}<input type="hidden" name="plan_id" value="{{ editing.pk }}">{% endif %}{{ tracking_form.as_p }}<button class="btn btn-primary" name="save" type="submit">{% trans "Save tracking" %}</button> <a class="btn btn-secondary" href="?loc={{ selected_location.pk }}">{% trans "New tracking" %}</a></form>
+</div></div>
+{% if editing %}
+<div class="card mb-3"><h2 class="card-header h5">{% trans "Ship quantities" %}</h2><div class="card-body">
+<form method="post" action="?loc={{ selected_location.pk }}">{% csrf_token %}<input type="hidden" name="plan_id" value="{{ editing.pk }}">{{ target_formset.management_form }}{{ target_formset.non_form_errors }}
+{% for form in target_formset %}<div class="mb-3">{{ form.id }}<label for="{{ form.desired_quantity.id_for_label }}"><strong>{{ form.instance.fitting.ship_type.name }} — {{ form.instance.fitting.name }}</strong></label> {{ form.desired_quantity }}{{ form.errors }}</div>{% endfor %}
+<button class="btn btn-primary" name="save_targets" type="submit">{% trans "Save ship targets" %}</button></form>
+</div></div>
+{% endif %}
+<div class="card mb-3"><h2 class="card-header h5">{% trans "Tracked doctrines and fits" %}</h2><div class="card-body table-responsive"><table class="table"><thead><tr><th>{% trans "Doctrine / fit" %}</th><th>{% trans "Visibility" %}</th><th>{% trans "Ship targets" %}</th><th>{% trans "Actions" %}</th></tr></thead><tbody>
+{% for plan in tracked_doctrines %}<tr><td>{{ plan }}</td><td>{% if plan.is_shared %}{% trans "Shared" %}{% else %}{% trans "Private" %}{% endif %}</td><td>{% for target in plan.fit_targets.all %}<div>{{ target.fitting.name }}: {{ target.desired_quantity }}</div>{% endfor %}</td><td><a class="btn btn-sm btn-primary" href="?loc={{ selected_location.pk }}&edit={{ plan.pk }}">{% trans "Edit" %}</a><form class="d-inline" method="post" action="?loc={{ selected_location.pk }}">{% csrf_token %}<input type="hidden" name="plan_id" value="{{ plan.pk }}"><button class="btn btn-sm btn-outline-danger" name="delete" type="submit">{% trans "Stop tracking" %}</button></form></td></tr>
+{% empty %}<tr><td colspan="4">{% trans "No doctrines or fits tracked." %}</td></tr>{% endfor %}
+</tbody></table>
+<form method="post" action="?loc={{ selected_location.pk }}">{% csrf_token %}<button class="btn btn-secondary" name="sync" type="submit">{% trans "Sync now" %}</button></form>
+</div></div>
+<div class="card"><h2 class="card-header h5">{% trans "Automatic item cleanup" %}</h2><div class="card-body"><form method="post" action="?loc={{ selected_location.pk }}">{% csrf_token %}
+<label><input type="checkbox" name="remove_unused_doctrine_items" {% if selected_location.remove_unused_doctrine_items %}checked{% endif %}> {% trans "Remove automatically tracked items when their last doctrine or fit stops using them" %}</label><p class="text-muted">{% trans "Manual item targets and members of item groups are preserved. Existing tracking rules are treated as manual. Saving a manual target for an automatic item protects it from cleanup." %}</p><button class="btn btn-primary" name="save_settings" type="submit">{% trans "Save cleanup setting" %}</button>
+</form></div></div>
+{% endblock %}

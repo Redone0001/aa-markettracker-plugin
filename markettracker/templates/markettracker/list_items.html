@@ -16,6 +16,8 @@
     <strong>{% trans "Tracked Items" %}</strong>
 
     <form method="get" class="d-flex flex-wrap gap-2 mt-2 mb-0 align-items-center">
+      <input type="hidden" name="sort" value="{{ sort }}"><input type="hidden" name="direction" value="{{ direction }}">
+      {% include "markettracker/includes/doctrine_item_filter.html" %}
       <select name="loc" class="form-select form-select-sm" style="max-width: 260px;" onchange="this.form.submit()">
         {% for l in locations %}
           <option value="{{ l.id }}" {% if selected_location and l.id == selected_location.id %}selected{% endif %}>
@@ -103,10 +105,10 @@
     <thead>
         <tr>
             <th>{% trans "Icon" %}</th>
-            <th>{% trans "Item Name" %}</th>
-            <th>{% trans "Quantity (current / desired)" %}</th>
-            <th>{% trans "Minimum Price" %}</th>
-            <th>{% trans "Jita sell price (markup %)" %}</th>
+            <th><a href="{% item_sort_url 'name' %}">{% trans "Item Name" %}{% if sort == 'name' %} {% if direction == 'desc' %}↓{% else %}↑{% endif %}{% endif %}</a></th>
+            <th><a href="{% item_sort_url 'stock' %}">{% trans "Current" %}{% if sort == 'stock' %} {% if direction == 'desc' %}↓{% else %}↑{% endif %}{% endif %}</a> / <a href="{% item_sort_url 'desired' %}">{% trans "Desired" %}{% if sort == 'desired' %} {% if direction == 'desc' %}↓{% else %}↑{% endif %}{% endif %}</a></th>
+            <th><a href="{% item_sort_url 'price' %}">{% trans "Minimum Price" %}{% if sort == 'price' %} {% if direction == 'desc' %}↓{% else %}↑{% endif %}{% endif %}</a></th>
+            <th><a href="{% item_sort_url 'jita' %}">{% trans "Jita sell price" %}{% if sort == 'jita' %} {% if direction == 'desc' %}↓{% else %}↑{% endif %}{% endif %}</a> (<a href="{% item_sort_url 'markup' %}">{% trans "markup %" %}{% if sort == 'markup' %} {% if direction == 'desc' %}↓{% else %}↑{% endif %}{% endif %}</a>)</th>
             <th class="text-end">
               <button id="btn-copy-multibuy" class="btn btn-primary btn-sm ms-2">
                 {% trans "Copy to Multibuy" %}

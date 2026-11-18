@@ -10,7 +10,7 @@ from django.contrib.auth.mixins import LoginRequiredMixin, PermissionRequiredMix
 from django.core.cache import cache
 from django.core.exceptions import PermissionDenied
 from django.db import transaction
-from django.db.models import Count, Min, Q, Sum
+from django.db.models import Count, Exists, Min, OuterRef, Q, Sum
 from django.http import HttpResponseBadRequest, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -23,6 +23,7 @@ from eve_sde.models import ItemType
 from eveuniverse.models import EveType
 
 from .auth import ownership_for_token
+from .doctrines import sync_doctrine_tracking
 from .esi import get_best_prices, get_market_history, get_type_name
 from .forms import (
     BulkTrackedItemForm,
@@ -72,6 +73,14 @@ DOMAIN = 10000043     # Amarr
 EXCLUDED_GROUP_IDS = [6, 1, 14]
 EXCLUDED_CATEGORIES = ["Blueprint", "SKINs"]
 REFRESH_ENQUEUE_TTL = 60
+
+
+def _doctrine_item_filter(queryset, request):
+    value = request.GET.get("doctrine_only", "")
+    if value in {"yes", "no"}:
+        sources = TrackedItem.doctrine_fits.through.objects.filter(trackeditem_id=OuterRef("pk"))
+        queryset = queryset.annotate(has_doctrine=Exists(sources)).filter(has_doctrine=value == "yes")
+    return queryset
 
 
 def _filter_tracked_items_by_type(
@@ -483,8 +492,13 @@ def list_items_view(request):
         TrackedItem.objects
         .filter(location=loc)
         .select_related("item", "item__eve_group", "item__eve_group__eve_category")
+        .annotate(
+            sell_min_price=Min("order_snapshots__price", filter=Q(order_snapshots__is_buy_order=False, order_snapshots__volume_remain__gt=0)),
+            sell_volume=Sum("order_snapshots__volume_remain", filter=Q(order_snapshots__is_buy_order=False, order_snapshots__volume_remain__gt=0)),
+        )
         .order_by("item__eve_group__eve_category__name", "item__name")
     )
+    tracked_items = _doctrine_item_filter(tracked_items, request)
 
     if q:
         if q.lower().startswith("cat:"):
@@ -524,15 +538,13 @@ def list_items_view(request):
 
     items_data = []
     for tracked in tracked_items:
-        orders = MarketOrderSnapshot.objects.filter(tracked_item=tracked, is_buy_order=False)
-        agg = orders.aggregate(min_price=Min("price"), total_vol=Sum("volume_remain"))
-        min_price = agg["min_price"]
-        total_volume = agg["total_vol"] or 0
+        min_price = tracked.sell_min_price
+        total_volume = tracked.sell_volume or 0
 
         pending_count = 0
         pending_qty = 0
 
-        desired = int(tracked.desired_quantity or 0)
+        desired = int(tracked.effective_quantity or 0)
         if desired <= 0:
             percentage = 100
             computed_status = "OK"
@@ -562,7 +574,7 @@ def list_items_view(request):
 
         items_data.append({
             "item": tracked.item,
-            "desired_quantity": tracked.desired_quantity,
+            "desired_quantity": desired,
             "price": min_price,
             "jita_price": jita_price,
             "jita_stale": quote.get("stale", False),
@@ -582,6 +594,8 @@ def list_items_view(request):
     groups_data = []
     for group in groups:
         member_ids = {item.pk for item in group.items.all()}
+        if request.GET.get("doctrine_only") in {"yes", "no"} and not member_ids.intersection(matching_ids):
+            continue
         if q or selected_item_filters:
             if not member_ids.intersection(matching_ids):
                 if selected_item_filters or q.casefold() not in group.name.casefold():
@@ -593,6 +607,18 @@ def list_items_view(request):
     if selected_statuses:
         allowed_statuses = {status.upper() for status in selected_statuses}
         items_data = [it for it in items_data if it["status"] in allowed_statuses]
+
+    sort = request.GET.get("sort", "name")
+    sort_keys = {"name": lambda row: row["item"].name.casefold(), "stock": lambda row: row["volume_remain"],
+                 "desired": lambda row: row["desired_quantity"], "price": lambda row: row["price"],
+                 "jita": lambda row: row["jita_price"], "markup": lambda row: row["markup"],
+                 "need": lambda row: row["need"], "coverage": lambda row: row["percentage"]}
+    key = sort_keys.get(sort, sort_keys["name"])
+    # Missing prices always sort last, in both directions. Names break ties.
+    priced = [row for row in items_data if key(row) is not None]
+    missing = [row for row in items_data if key(row) is None]
+    priced.sort(key=lambda row: (key(row), row["item"].name.casefold()), reverse=request.GET.get("direction") == "desc")
+    items_data = priced + missing
 
     locations = list(TrackedLocation.objects.filter(is_active=True).order_by("-is_default", "name"))
     for location in locations:
@@ -609,6 +635,9 @@ def list_items_view(request):
             "item_groups": groups_data,
             "location_title": location_title,  # <-- do nagłówka
             "q": q,
+            "doctrine_only": request.GET.get("doctrine_only", ""),
+            "sort": sort,
+            "direction": request.GET.get("direction", "asc"),
             "status_filters": selected_statuses,
             "item_filters": item_filters,
             "exclude_item_types": exclude_item_types,
@@ -644,17 +673,30 @@ def manage_stock_view(request):
     if request.method == "POST" and "group_delete" in request.POST:
         if group_instance is None:
             return HttpResponseBadRequest()
-        group_instance.delete()
+        try:
+            with transaction.atomic():
+                group_instance.delete()
+                sync_doctrine_tracking(loc.pk)
+        except ValueError as error:
+            messages.error(request, str(error))
+            return redirect(f"{reverse('markettracker:manage_stock')}?loc={loc.id}")
         messages.success(request, _t("Item group deleted."))
         return redirect(f"{reverse('markettracker:manage_stock')}?loc={loc.id}")
     if request.method == "POST" and "group_save" in request.POST:
         group_form = TrackedItemGroupForm(request.POST, instance=group_instance, location=loc)
         if group_form.is_valid():
-            with transaction.atomic():
-                group_form.save()
-                ensure_group_tracking(loc.pk)
-            messages.success(request, _t("Item group saved."))
-            return redirect(f"{reverse('markettracker:manage_stock')}?loc={loc.id}")
+            try:
+                with transaction.atomic():
+                    group_form.save()
+                    ensure_group_tracking(loc.pk)
+            except ValueError as error:
+                group_form.add_error(None, str(error))
+                if group_instance is None:
+                    group_form.instance.pk = None
+                    group_form.instance._state.adding = True
+            else:
+                messages.success(request, _t("Item group saved."))
+                return redirect(f"{reverse('markettracker:manage_stock')}?loc={loc.id}")
 
 
     add_mode = "add" in request.GET
@@ -713,6 +755,7 @@ def manage_stock_view(request):
             if form.is_valid():
                 obj = form.save(commit=False)
                 obj.location = loc
+                obj.manually_tracked = True
                 obj.save()
                 messages.success(request, _t("Item added successfully."))
                 return redirect(f"{reverse('markettracker:manage_stock')}?loc={loc.id}")
@@ -730,6 +773,7 @@ def manage_stock_view(request):
             if form.is_valid():
                 obj = form.save(commit=False)
                 obj.location = loc
+                obj.manually_tracked = True
                 obj.save()
                 messages.success(request, _t("Item updated successfully."))
                 return redirect(f"{reverse('markettracker:manage_stock')}?loc={loc.id}")
@@ -835,6 +879,7 @@ def manage_stock_view(request):
         .filter(location=loc)
         .select_related("item", "item__eve_group", "item__eve_group__eve_category")
     )
+    tracked_items = _doctrine_item_filter(tracked_items, request)
     if q:
         if q.lower().startswith("cat:"):
             term = q.split(":", 1)[1].strip()
@@ -894,6 +939,7 @@ def manage_stock_view(request):
             "tc_add_mode": False,
             "tc_edit_id": None,
             "tracked_items": tracked_items,
+            "doctrine_only": request.GET.get("doctrine_only", ""),
             "tracked_contracts_loc": tracked_contracts_loc,
             "market_character": market_character,
             "q": q,
