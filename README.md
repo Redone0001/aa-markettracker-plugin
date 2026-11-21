@@ -295,11 +295,14 @@ location count. The price consumes the cheapest order stacks first, respecting
 available quantities; it is unavailable if a complete fit cannot be assembled.
 Compact ship rows inherit the active Alliance Auth theme. Click a fit name or
 its components icon to see bottlenecks and change the Buy all quantity.
-Coverage is the greatest whole percentage of all the doctrine's ship targets
-that available stock can support, rounded conservatively. Shared modules and
-overlapping substitution groups cannot spend the same stock twice. Each ship's
-available count, and each doctrine's coverage, is evaluated independently of
-other ships/doctrines; these figures are not stock reservations.
+Coverage adds up each fit's available ships, capped at its target, and divides
+by the total ships targeted, rounded down to a whole percentage. For example,
+264 available ships against 265 targeted gives 99% coverage. Surplus ships for
+one fit cannot offset a shortage in another. Paused fits with a zero target are
+excluded. Each fit is evaluated independently against local stock, so shared
+stock can contribute to several fits' counts and to the summary. Within a fit,
+overlapping substitution groups cannot spend the same stock twice. These
+figures are not stock reservations across fits or doctrines.
 
 A module, drone, charge, or cargo item in an existing item group can use any
 member of that group. Quantities for multiple components using the same group

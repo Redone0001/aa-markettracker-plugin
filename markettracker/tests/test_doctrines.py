@@ -28,6 +28,7 @@ from markettracker.doctrines import (
 )
 from markettracker.item_groups import ensure_group_tracking, group_stock
 from markettracker.models import (
+    DoctrineFitTarget,
     MarketOrderSnapshot,
     TrackedDoctrine,
     TrackedItem,
@@ -269,7 +270,7 @@ def test_group_substitutions_set_combined_targets_without_multiplying_individual
     assert not unpriced
 
 
-def test_doctrine_coverage_accounts_for_modules_shared_by_different_ships(doctrine_data):
+def test_doctrine_coverage_matches_independent_fit_counts_with_shared_modules(doctrine_data):
     data = doctrine_data
     second = Fitting.objects.create(
         name="Second fit", ship_type=data.types[4], ship_type_type_id=data.types[4].pk
@@ -284,8 +285,69 @@ def test_doctrine_coverage_accounts_for_modules_shared_by_different_ships(doctri
     stock = doctrine_stock(
         tracking_queryset(data.location.pk).get(), {}, sell_orders(data.location.pk)
     )
-    assert stock["coverage"] == 50
+    assert stock["coverage"] == 100
+    assert stock["stock_state"] == "ready"
+    assert stock["ready_fits"] == 2
     assert [ship["available"] for ship in stock["ships"]] == [10, 10]
+
+
+@pytest.mark.parametrize(
+    ("fit_stock", "coverage", "ready_fits", "stock_state"),
+    [
+        pytest.param(
+            [
+                (50, 61),
+                (50, 61),
+                (10, 10),
+                (25, 45),
+                (5, 11),
+                (5, 17),
+                (10, 9),
+                (25, 39),
+                (10, 19),
+                (25, 27),
+                (25, 27),
+                (25, 27),
+            ],
+            99,
+            11,
+            "low",
+            id="screenshot-264-of-265",
+        ),
+        pytest.param([(10, 20), (30, 10)], 50, 1, "low", id="weighted-and-capped"),
+        pytest.param([(3, 1), (3, 2)], 50, 0, "low", id="round-after-summing"),
+        pytest.param([(1000, 999)], 99, 0, "low", id="round-down"),
+        pytest.param([(10, 0), (20, 0)], 0, 0, "critical", id="empty-stock"),
+        pytest.param([(10, 10), (0, 0)], 100, 1, "ready", id="paused-fit"),
+        pytest.param([], 100, 0, "ready", id="no-targets"),
+    ],
+)
+def test_doctrine_coverage_summarizes_capped_per_fit_ship_counts(
+    doctrine_data, fit_stock, coverage, ready_fits, stock_state
+):
+    data = doctrine_data
+    data.plan.fit_targets.all().delete()
+    orders = []
+    for index, (target, available) in enumerate(fit_stock):
+        hull = ItemType.objects.create(
+            id=7100 + index,
+            name=f"Coverage hull {index}",
+            group=data.types[0].group,
+            published=True,
+        )
+        fit = Fitting.objects.create(
+            name=f"Coverage fit {index:02d}", ship_type=hull, ship_type_type_id=hull.pk
+        )
+        DoctrineFitTarget.objects.create(tracking=data.plan, fitting=fit, desired_quantity=target)
+        orders.append((hull.pk, available, 1))
+    stock = doctrine_stock(tracking_queryset(data.location.pk).get(), {}, orders)
+    assert [ship["available"] for ship in stock["ships"]] == [
+        available for target, available in fit_stock if target
+    ]
+    assert stock["target_ships"] == sum(target for target, _ in fit_stock)
+    assert stock["coverage"] == coverage
+    assert stock["ready_fits"] == ready_fits
+    assert stock["stock_state"] == stock_state
 
 
 def test_buy_missing_and_location_isolation(doctrine_data):

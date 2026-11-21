@@ -287,11 +287,10 @@ def available_fits(requirements, orders):
 
 
 def doctrine_stock(plan, groups, orders):
-    rows, combined = [], []
+    rows = []
     stock = Counter()
     for type_id, quantity, _ in orders:
         stock[type_id] += quantity
-    capacity_orders = [(type_id, quantity, 0) for type_id, quantity in stock.items()]
     for target in plan.fit_targets.all():
         if not target.desired_quantity:
             continue
@@ -311,7 +310,6 @@ def doctrine_stock(plan, groups, orders):
                     "need": max(needed - available, 0),
                 }
             )
-            combined.append(Requirement(req.key, req.name, req.type_ids, needed, req.original_id))
         bottlenecks.sort(key=lambda row: (row["fits"], row["name"]))
         rows.append(
             {
@@ -324,33 +322,18 @@ def doctrine_stock(plan, groups, orders):
                 "missing_components": sum(line["need"] > 0 for line in bottlenecks),
             }
         )
-    # Coverage is the attainable proportion of ALL doctrine target requirements.
-    # Scaling all lines together makes shared modules count only once.
-    low, high = 0, 100
-    while low < high:
-        middle = (low + high + 1) // 2
-        scaled = [
-            Requirement(
-                req.key,
-                req.name,
-                req.type_ids,
-                (req.quantity * middle + 99) // 100,
-                req.original_id,
-            )
-            for req in combined
-        ]
-        if not any(allocate(scaled, capacity_orders)[3]):
-            low = middle
-        else:
-            high = middle - 1
-    coverage = low if combined else 100
+    # Summarize the independent per-fit counts, weighted by their ship targets.
+    # Surplus for one fit cannot offset another fit's shortage.
+    target_ships = sum(row["target"].desired_quantity for row in rows)
+    covered_ships = sum(min(row["available"], row["target"].desired_quantity) for row in rows)
+    coverage = covered_ships * 100 // target_ships if target_ships else 100
     return {
         "plan": plan,
         "ships": rows,
         "coverage": coverage,
         "stock_state": _stock_state(coverage),
         "ready_fits": sum(row["available"] >= row["target"].desired_quantity for row in rows),
-        "target_ships": sum(row["target"].desired_quantity for row in rows),
+        "target_ships": target_ships,
     }
 
 
