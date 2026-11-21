@@ -1,4 +1,5 @@
 # ruff: noqa: F811
+from copy import deepcopy
 from datetime import timedelta
 from decimal import Decimal
 from unittest.mock import MagicMock, patch
@@ -52,6 +53,16 @@ def history_user(market_user):
     market_user.user_permissions.add(
         Permission.objects.get(
             content_type__app_label="markettracker", codename="can_manage_price_history"
+        )
+    )
+    return market_user
+
+
+@pytest.fixture
+def history_viewer(market_user):
+    market_user.user_permissions.add(
+        Permission.objects.get(
+            content_type__app_label="markettracker", codename="can_view_price_history"
         )
     )
     return market_user
@@ -397,14 +408,133 @@ def test_dispatcher_expires_history_even_without_a_market_character(history_data
     assert not recording.samples.exists()
 
 
+@pytest.mark.parametrize("role", ["history_user", "history_viewer"])
 def test_history_permission_also_requires_basic_access(
-    client, history_data, history_user, rendered_pages
+    client, history_data, rendered_pages, request, role
 ):
-    history_user.user_permissions.remove(
+    user = request.getfixturevalue(role)
+    user.user_permissions.remove(
         Permission.objects.get(content_type__app_label="markettracker", codename="basic_access")
     )
-    client.force_login(history_user)
+    client.force_login(user)
     assert client.get(history_url(history_data)).status_code == 403
+
+
+@pytest.mark.parametrize("section", ["doctrines", "items", "groups"])
+@pytest.mark.parametrize("recording_enabled", [True, False], ids=["recording", "paused"])
+def test_viewers_can_read_history_without_management_controls(
+    client, history_data, history_viewer, rendered_pages, section, recording_enabled
+):
+    data = history_data
+    if section == "doctrines":
+        source = data.plan.fit_targets.get()
+        recording = enable(data, fit_target=source)
+    elif section == "items":
+        source = data.location.tracked_items.first()
+        recording = enable(data, tracked_item=source)
+    else:
+        source = TrackedItemGroup.objects.create(location=data.location, name="History group")
+        source.items.add(EveType.objects.get(pk=data.types[1].pk))
+        recording = enable(data, item_group=source)
+    recording.is_enabled = recording_enabled
+    recording.save(update_fields=["is_enabled"])
+    sample = PriceHistorySample.objects.create(
+        recording=recording, observed_at=timezone.now(), price=Decimal("123.45"), volume=10
+    )
+    client.force_login(history_viewer)
+    response = client.get(history_url(data, section, record=source.pk))
+    assert response.status_code == 200
+    assert not response.context["can_manage_price_history"]
+    assert response.context["samples"] == [sample]
+    assert response.context["history_data"][0]["price"] == "123.45"
+    assert b"data-history-location" in response.content
+    assert b"data-history-toggle" not in response.content
+    assert b'class="history-settings"' not in response.content
+    assert b'name="action"' not in response.content
+    assert b'name="source_id"' not in response.content
+    assert b'class="history-record-status history-muted"' in response.content
+
+
+@pytest.mark.parametrize("action", ["toggle", "settings"])
+@pytest.mark.parametrize("stock_manager", [True, False])
+def test_viewers_cannot_change_recordings_or_settings_even_with_stock_management(
+    client, history_data, history_viewer, rendered_pages, action, stock_manager
+):
+    data = history_data
+    target = data.plan.fit_targets.get()
+    recording = enable(data, fit_target=target)
+    sample = PriceHistorySample.objects.create(
+        recording=recording, observed_at=timezone.now() - timedelta(days=40), price=1, volume=1
+    )
+    if stock_manager:
+        history_viewer.user_permissions.add(
+            Permission.objects.get(
+                content_type__app_label="markettracker", codename="can_manage_stocks"
+            )
+        )
+    client.force_login(history_viewer)
+    response = client.post(
+        history_url(data),
+        {
+            "action": action,
+            "source_id": target.pk,
+            "enabled": "0",
+            "interval_hours": "6",
+            "retention_days": "30",
+        },
+    )
+    assert response.status_code == 403
+    recording.refresh_from_db()
+    config = PriceHistorySettings.objects.get(location=data.location)
+    assert recording.is_enabled
+    assert (config.interval_hours, config.retention_days) == (1, 90)
+    assert list(recording.samples.all()) == [sample]
+
+
+def test_manager_permission_includes_view_access(
+    client, history_data, history_user, rendered_pages
+):
+    assert not history_user.has_perm("markettracker.can_view_price_history")
+    client.force_login(history_user)
+    response = client.get(history_url(history_data))
+    assert response.status_code == 200
+    assert response.context["can_manage_price_history"]
+    assert b"data-history-toggle" in response.content
+    assert b'class="history-settings"' in response.content
+
+
+def test_viewers_do_not_gain_access_to_private_doctrine_history(
+    client, history_data, history_viewer, rendered_pages
+):
+    data = history_data
+    target = data.plan.fit_targets.get()
+    enable(data, fit_target=target)
+    record_price_history(data.location.pk)
+    data.plan.is_shared = False
+    data.plan.save()
+    client.force_login(history_viewer)
+    assert data.fit.name.encode() not in client.get(history_url(data)).content
+    assert client.get(history_url(data, record=target.pk)).status_code == 404
+
+
+@pytest.mark.parametrize("role", [None, "can_view_price_history", "can_manage_price_history"])
+def test_navigation_shows_history_for_either_role_only(
+    client, history_data, market_user, rendered_pages, settings, role
+):
+    templates = deepcopy(settings.TEMPLATES)
+    templates[0]["OPTIONS"]["loaders"][0][1]["allianceauth/base-bs5.html"] = (
+        "{% block header_nav_collapse_left %}{% endblock %}{% block content %}{% endblock %}"
+    )
+    settings.TEMPLATES = templates
+    if role:
+        market_user.user_permissions.add(
+            Permission.objects.get(content_type__app_label="markettracker", codename=role)
+        )
+    client.force_login(market_user)
+    response = client.get(reverse("markettracker:doctrine_list"), {"loc": history_data.location.pk})
+    assert response.status_code == 200
+    link = f'href="{reverse("markettracker:price_history")}"'.encode()
+    assert (link in response.content) == bool(role)
 
 
 def test_fit_quote_matches_existing_complete_fit_price(history_data):

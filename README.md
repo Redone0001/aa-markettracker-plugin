@@ -153,9 +153,11 @@ management:
   deliveries.
 - `markettracker.can_manage_stocks` — configure tracked stock, link the market
   character, and manually enqueue refreshes.
-- `markettracker.can_manage_price_history` — view the Price history page,
-  select records to capture, and configure sampling and retention. Requires
-  `basic_access` as well; assign it to a dedicated Alliance Auth group/role.
+- `markettracker.can_view_price_history` — browse recorded prices and volume.
+- `markettracker.can_manage_price_history` — browse history, select records to
+  capture, and configure sampling and retention. Includes view access.
+  Both history permissions require `basic_access`; assign them to separate
+  viewer and manager groups/roles as appropriate.
 - `markettracker.can_move_tracked_items` — view tracked items in Django admin
   and bulk move them between active market locations.
 - `markettracker.can_manage_deliveries` — view and manage all deliveries.
@@ -166,9 +168,12 @@ The diagnostics page is restricted to Django superusers.
 
 Open **Price history** to switch between **Doctrines**, **Items**, and **Item
 groups**, select individual records, and inspect their lowest price and
-available volume over 7, 30, or 90 days. The page and all recording controls
-require `markettracker.can_manage_price_history`; stock-management permission
-alone does not grant access. History users see shared doctrines; viewing or
+available volume over 7, 30, or 90 days. Viewers need
+`markettracker.can_view_price_history`. Managers need
+`markettracker.can_manage_price_history`, which also grants viewing access.
+Only managers see recording toggles and sampling/retention settings; requests
+to change them are rejected for viewers. Stock-management permission alone
+does not grant history access. Both roles see shared doctrines; viewing or
 configuring private doctrine history additionally requires `can_manage_stocks`.
 
 Recording is off by default. Merely opening the page creates no settings,
@@ -199,9 +204,10 @@ their decimals; truncation only affects clipboard text.
 
 After upgrading, run `python manage.py migrate` and
 `python manage.py collectstatic --noinput`, restart web and Celery services,
-then grant `basic_access` and `can_manage_price_history` to the intended group.
-The migration does not automatically grant the new permission or enable any
-recordings.
+then grant `basic_access` plus `can_view_price_history` to viewer groups or
+`can_manage_price_history` to manager groups. Existing managers retain their
+access; the migration does not automatically grant view access to other users
+or enable any recordings.
 
 ### Moving tracked items between locations
 

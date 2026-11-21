@@ -27,8 +27,10 @@
     >
         {% trans "Contracts list" %}
     </a>
-    {% if perms.markettracker.basic_access and perms.markettracker.can_manage_price_history %}
+    {% if perms.markettracker.basic_access %}
+    {% if perms.markettracker.can_view_price_history or perms.markettracker.can_manage_price_history %}
     <a class="nav-link {% navactive request 'markettracker:price_history' %}" href="{% url 'markettracker:price_history' %}">{% trans "Price history" %}</a>
+    {% endif %}
     {% endif %}
     {% if perms.markettracker.can_manage_stocks %}
     <a

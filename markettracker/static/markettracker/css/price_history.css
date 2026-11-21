@@ -26,6 +26,7 @@
 .price-history .history-volume > span:first-child { color: color-mix(in srgb, var(--bs-success) 65%, var(--bs-body-color)); font-weight: 500; }
 .price-history .history-record-toggle label { display: flex; align-items: center; justify-content: flex-end; gap: .4rem; cursor: pointer; color: var(--history-muted); font-size: .75rem; }
 .price-history .history-record-toggle input { width: 1rem; height: 1rem; accent-color: var(--bs-success); }
+.price-history .history-record-status { text-align: right; font-size: .75rem; }
 .price-history .history-doctrine > summary { display: flex; align-items: center; flex-wrap: wrap; gap: .6rem; list-style: none; padding: .7rem 1rem; background: var(--bs-card-cap-bg); cursor: pointer; font-size: .82rem; font-weight: 500; }
 .price-history .history-doctrine > summary::-webkit-details-marker { display: none; }
 .price-history .history-chevron { font-size: .6rem; }
@@ -57,6 +58,7 @@
   .price-history .history-volume { display: flex; gap: .3rem; align-items: baseline; }
   .price-history .history-volume .history-meta { margin: 0; }
   .price-history .history-record-toggle { grid-column: 2; grid-row: 2 / 4; }
+  .price-history .history-record-status { grid-column: 2; grid-row: 2 / 4; }
   .price-history .history-settings-fields > div { width: 100%; }
   .price-history .history-settings select { font-size: 1rem; }
   .price-history .history-settings { margin-left: 0; }

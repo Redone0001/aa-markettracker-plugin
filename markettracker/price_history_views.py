@@ -6,6 +6,7 @@ from urllib.parse import urlencode
 from django import forms
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required, permission_required
+from django.core.exceptions import PermissionDenied
 from django.core.paginator import Paginator
 from django.db import transaction
 from django.db.models import Prefetch
@@ -83,11 +84,14 @@ def _integer(value, default=None):
 
 
 @login_required
-@permission_required(
-    ("markettracker.basic_access", "markettracker.can_manage_price_history"), raise_exception=True
-)
+@permission_required("markettracker.basic_access", raise_exception=True)
 @require_http_methods(["GET", "POST"])
 def price_history(request):
+    can_manage = request.user.has_perm("markettracker.can_manage_price_history")
+    if not (can_manage or request.user.has_perm("markettracker.can_view_price_history")):
+        raise PermissionDenied
+    if request.method == "POST" and not can_manage:
+        raise PermissionDenied
     location = get_selected_location(request)
     if location is None:
         messages.error(request, _("Configure a market location first."))
@@ -250,6 +254,7 @@ def price_history(request):
         "markettracker/price_history.html",
         {
             "selected_location": location,
+            "can_manage_price_history": can_manage,
             "location_title": location_display_name(location),
             "locations": locations,
             "section": section,

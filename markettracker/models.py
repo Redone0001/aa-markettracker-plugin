@@ -641,6 +641,7 @@ class General(models.Model):
         permissions = (
             ("basic_access", "Can access this app"),
             ("can_manage_stocks", "Can set tracked items"),
+            ("can_view_price_history", "Can view price history"),
             ("can_manage_price_history", "Can view and manage price history"),
             ("can_manage_deliveries", "Can see all finished deliveries and delete current ones"),
         )
