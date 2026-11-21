@@ -130,10 +130,10 @@
                 </a>  
               </td>
               <td>{{ entry.volume_remain|default:"0" }} / {{ entry.desired_quantity|default:"—" }}</td>
-              <td>{% if entry.price %}{{ entry.price|compact_isk }}{% else %}<span class="text-muted">{% trans "No data" %}</span>{% endif %}</td>
+              <td>{% if entry.price %}{% include "markettracker/includes/copy_price.html" with price=entry.price %}{% else %}<span class="text-muted">{% trans "No data" %}</span>{% endif %}</td>
               <td>
                 {% if entry.jita_price %}
-                  {{ entry.jita_price|compact_isk }}
+                  {% include "markettracker/includes/copy_price.html" with price=entry.jita_price %}
                   {% if entry.markup != None %}({% if entry.markup > 0 %}+{% endif %}{{ entry.markup|floatformat:2 }}%){% else %}(—){% endif %}
                   {% if entry.jita_stale %}<span class="badge bg-secondary">{% trans "Cached" %}</span>{% endif %}
                 {% else %}<span class="text-muted">{% trans "No data" %}</span>{% endif %}

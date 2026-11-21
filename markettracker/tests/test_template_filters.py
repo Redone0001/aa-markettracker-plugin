@@ -1,6 +1,6 @@
 import pytest
 
-from markettracker.templatetags.market_extras import compact_isk
+from markettracker.templatetags.market_extras import compact_isk, integer_isk
 
 
 @pytest.mark.parametrize(
@@ -23,3 +23,19 @@ def test_compact_isk(value, expected):
 @pytest.mark.parametrize("value", [None, "", "not-a-number", float("inf")])
 def test_compact_isk_returns_empty_string_for_missing_or_invalid_values(value):
     assert compact_isk(value) == ""
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        ("266621493.78", "266621493"),
+        ("999.99", "999"),
+        ("9007199254740993.99", "9007199254740993"),
+        (0, "0"),
+        (None, ""),
+        (float("inf"), ""),
+        ("invalid", ""),
+    ],
+)
+def test_integer_isk_truncates_without_rounding_or_float_precision_loss(value, expected):
+    assert integer_isk(value) == expected

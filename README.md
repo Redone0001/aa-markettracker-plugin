@@ -16,6 +16,7 @@ The plugin **does not require** the `structures` app. It uses a numeric
   sell-order stock, and group stock alerts.
 - Bulk tracked-item imports with quantity multipliers and optional overwrites.
 - Market-order snapshots for regions and structures.
+- Opt-in local price and volume history for fits, individual items, and item groups.
 - Contract snapshots.
 - Deliveries and basic delivery management.
 - Discord webhooks with group mentions and embeds.
@@ -152,11 +153,55 @@ management:
   deliveries.
 - `markettracker.can_manage_stocks` — configure tracked stock, link the market
   character, and manually enqueue refreshes.
+- `markettracker.can_manage_price_history` — view the Price history page,
+  select records to capture, and configure sampling and retention. Requires
+  `basic_access` as well; assign it to a dedicated Alliance Auth group/role.
 - `markettracker.can_move_tracked_items` — view tracked items in Django admin
   and bulk move them between active market locations.
 - `markettracker.can_manage_deliveries` — view and manage all deliveries.
 
 The diagnostics page is restricted to Django superusers.
+
+### Local price and volume history
+
+Open **Price history** to switch between **Doctrines**, **Items**, and **Item
+groups**, select individual records, and inspect their lowest price and
+available volume over 7, 30, or 90 days. The page and all recording controls
+require `markettracker.can_manage_price_history`; stock-management permission
+alone does not grant access. History users see shared doctrines; viewing or
+configuring private doctrine history additionally requires `can_manage_stocks`.
+
+Recording is off by default. Merely opening the page creates no settings,
+recording rules, or samples. Each enabled fitting records its cheapest complete
+fit price and complete fits available, evaluated independently against local
+stock and substitution groups. It does not record each component. Item groups
+record the lowest member sell price and total member sell volume, without
+enabling history for their members. Individual items record the lowest sell
+price and total sell volume. Only positive-price, nonempty local sell orders
+count; unavailable fits/items record a missing price and zero volume.
+
+Sampling follows successful market refreshes, at most once per hour by default.
+Per-location settings offer 1, 6, or 24 hours between samples and retention of
+30, 90 (default), or 365 days. No additional sampling schedule or live ESI call
+is needed. Failed/empty imports do not create history. The existing
+`fetch_market_data_auto` dispatcher expires old samples, including paused
+recordings and inactive locations; saving a shorter retention also cleans up
+expired samples immediately. Keep that dispatcher scheduled for expiry even
+when recording is paused. Pausing preserves existing samples until expiry.
+Removing a tracked source removes its history; moving an item rule to another
+market also clears its old history and opt-in so prices from different markets
+cannot be mixed.
+
+Prices in the doctrine market, item list, and history page are clickable. They
+copy the exact whole ISK amount with decimals truncated, no separators, and no
+compact suffix: `266,621,493.78` copies as `266621493`. Historical prices keep
+their decimals; truncation only affects clipboard text.
+
+After upgrading, run `python manage.py migrate` and
+`python manage.py collectstatic --noinput`, restart web and Celery services,
+then grant `basic_access` and `can_manage_price_history` to the intended group.
+The migration does not automatically grant the new permission or enable any
+recordings.
 
 ### Moving tracked items between locations
 

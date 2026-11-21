@@ -37,6 +37,7 @@ from .models import (
     TrackedContract,
     TrackedItem,
 )
+from .price_history import purge_expired_history, record_price_history_safely
 from .providers import (
     get_character_contract_items,
     get_character_contracts,
@@ -71,6 +72,7 @@ def fetch_market_data_auto():
     - schedules one task per active TrackedLocation (region/structure)
     - uses ONLY the admin MarketCharacter
     """
+    purge_expired_history()
     mc = (
         MarketCharacter.objects
         .select_related("character", "token")
@@ -335,6 +337,8 @@ def fetch_market_data_for_location(character_id: int, location_pk: int):
         with connection.cursor() as cursor:
             cursor.execute(f"DROP TABLE IF EXISTS `{tmp_table}`;")
 
+        record_price_history_safely(loc.pk)
+
         # alerts
         changed_statuses.extend(update_group_statuses(loc.pk, yellow_threshold, red_threshold))
         if changed_statuses:
@@ -573,6 +577,14 @@ def fetch_market_data(character_id: int):
             message="Atomic swap done",
             data=_ctx({"orig_table": orig_table, "tmp_table": tmp_table, "old_table": old_table}),
         )
+
+        from .models import TrackedLocation
+
+        history_location = TrackedLocation.objects.filter(
+            scope=config.scope, location_id=config.location_id, is_active=True
+        ).first()
+        if history_location:
+            record_price_history_safely(history_location.pk)
 
         # --- deliveries / alerts AFTER swap ---
         if Delivery.objects.filter(status="PENDING").exists():

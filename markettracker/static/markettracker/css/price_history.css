@@ -1,0 +1,64 @@
+.price-history { --history-muted: var(--bs-secondary-color, var(--bs-secondary)); --history-border: var(--bs-border-color, var(--bs-card-border-color)); --history-accent: var(--bs-success); }
+.price-history .history-muted { color: var(--history-muted); }
+.price-history .history-meta { display: block; font-size: .72rem; margin-top: .15rem; }
+.price-history .history-toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .75rem; margin-bottom: .85rem; }
+.price-history .history-settings { margin-left: auto; }
+.price-history .history-settings > summary { list-style: none; cursor: pointer; padding: .4rem .65rem; border: 1px solid var(--history-border); border-radius: var(--bs-border-radius-sm); font-size: .78rem; }
+.price-history .history-settings > summary::-webkit-details-marker { display: none; }
+.price-history .history-settings[open] { width: 100%; }
+.price-history .history-settings[open] > summary { width: fit-content; margin-left: auto; }
+.price-history .history-settings-panel { margin-top: .75rem; padding: 1rem; }
+.price-history .history-settings-fields { display: flex; flex-wrap: wrap; gap: 1rem; align-items: end; margin-bottom: 1rem; }
+.price-history .history-list { overflow: hidden; }
+.price-history .history-list-head, .price-history .history-row { display: grid; grid-template-columns: minmax(12rem, 1fr) 10rem 7rem 7rem; align-items: center; gap: .8rem; padding: .75rem 1rem; }
+.price-history .history-list-head { padding-top: .55rem; padding-bottom: .55rem; background: var(--bs-card-cap-bg); color: var(--history-muted); font-size: .72rem; }
+.price-history .history-list-head > :not(:first-child) { text-align: right; }
+.price-history .history-row { border-top: 1px solid var(--history-border); font-size: .82rem; }
+.price-history .history-selected { background: color-mix(in srgb, var(--bs-success) 10%, var(--bs-card-bg)); }
+.price-history .history-record { display: flex; align-items: center; gap: .7rem; min-width: 0; color: var(--bs-body-color); text-decoration: none; }
+.price-history .history-record:hover .history-record-name { text-decoration: underline; }
+.price-history .history-record img, .price-history .history-record-icon { width: 2rem; height: 2rem; border-radius: var(--bs-border-radius-sm); flex-shrink: 0; }
+.price-history .history-record-icon { display: inline-flex; align-items: center; justify-content: center; background: var(--bs-card-cap-bg); color: var(--history-muted); }
+.price-history .history-record-name { overflow-wrap: anywhere; }
+.price-history .history-price { text-align: right; font-variant-numeric: tabular-nums; }
+.price-history .history-price .market-price-copy { justify-content: flex-end; }
+.price-history .history-volume { text-align: right; font-variant-numeric: tabular-nums; }
+.price-history .history-volume > span:first-child { color: color-mix(in srgb, var(--bs-success) 65%, var(--bs-body-color)); font-weight: 500; }
+.price-history .history-record-toggle label { display: flex; align-items: center; justify-content: flex-end; gap: .4rem; cursor: pointer; color: var(--history-muted); font-size: .75rem; }
+.price-history .history-record-toggle input { width: 1rem; height: 1rem; accent-color: var(--bs-success); }
+.price-history .history-doctrine > summary { display: flex; align-items: center; flex-wrap: wrap; gap: .6rem; list-style: none; padding: .7rem 1rem; background: var(--bs-card-cap-bg); cursor: pointer; font-size: .82rem; font-weight: 500; }
+.price-history .history-doctrine > summary::-webkit-details-marker { display: none; }
+.price-history .history-chevron { font-size: .6rem; }
+.price-history .history-doctrine[open] > summary .history-chevron { transform: rotate(90deg); }
+.price-history .history-list-footer { padding: .7rem 1rem; border-top: 1px solid var(--history-border); font-size: .73rem; }
+.price-history .history-pagination { display: flex; align-items: center; justify-content: flex-end; gap: .8rem; padding: .7rem 1rem; border-top: 1px solid var(--history-border); }
+.price-history .history-detail { margin-top: 1.5rem; padding-top: 1.25rem; border-top: 1px solid var(--history-border); }
+.price-history .history-detail-heading { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-start; gap: .75rem; margin-bottom: 1rem; }
+.price-history .history-periods { display: flex; flex-wrap: wrap; gap: .35rem; }
+.price-history .history-readouts { display: flex; flex-wrap: wrap; gap: 1rem 3rem; margin-bottom: 1.25rem; }
+.price-history .history-readout-value { font-size: 1.2rem; font-variant-numeric: tabular-nums; }
+.price-history .history-charts { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); gap: 1.5rem; }
+.price-history .history-charts h3 { font-size: .8rem; }
+.price-history .history-chart { position: relative; height: 13rem; min-width: 0; }
+.price-history .history-empty { padding: 1.5rem 0; }
+.price-history .history-samples { margin-top: 1rem; }
+.price-history .history-samples summary { cursor: pointer; }
+.price-history .history-samples table { margin-top: .75rem; font-size: .78rem; --bs-table-bg: transparent; }
+@container stock-management (max-width: 45rem) {
+  .price-history .history-charts { grid-template-columns: minmax(0, 1fr); }
+  .price-history .history-list-head, .price-history .history-row { grid-template-columns: minmax(9rem, 1fr) 8rem 5.5rem 6rem; gap: .5rem; }
+}
+@media (max-width: 575.98px) {
+  .price-history .history-list-head { display: none; }
+  .price-history .history-row { grid-template-columns: minmax(0, 1fr) auto; gap: .6rem; padding: .8rem; }
+  .price-history .history-record { grid-column: 1 / -1; }
+  .price-history .history-price, .price-history .history-volume { text-align: left; }
+  .price-history .history-price .market-price-copy { justify-content: flex-start; }
+  .price-history .history-volume { display: flex; gap: .3rem; align-items: baseline; }
+  .price-history .history-volume .history-meta { margin: 0; }
+  .price-history .history-record-toggle { grid-column: 2; grid-row: 2 / 4; }
+  .price-history .history-settings-fields > div { width: 100%; }
+  .price-history .history-settings select { font-size: 1rem; }
+  .price-history .history-settings { margin-left: 0; }
+}
+@media (pointer: coarse) { .price-history .history-record-toggle label, .price-history .history-periods a, .price-history .history-settings > summary { min-height: 44px; } }

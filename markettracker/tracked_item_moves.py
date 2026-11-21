@@ -4,7 +4,7 @@ from dataclasses import dataclass
 
 from django.db import transaction
 
-from .models import MarketOrderSnapshot, TrackedItem, TrackedLocation
+from .models import MarketOrderSnapshot, PriceHistoryRecording, TrackedItem, TrackedLocation
 
 
 @dataclass(frozen=True)
@@ -64,6 +64,8 @@ def move_tracked_items(queryset, target_location):
 
     deleted_snapshots = 0
     if moved_ids:
+        # History and opt-ins belong to the old market, just like order snapshots.
+        PriceHistoryRecording.objects.filter(tracked_item_id__in=moved_ids).delete()
         _, deleted_by_model = MarketOrderSnapshot.objects.filter(
             tracked_item_id__in=moved_ids
         ).delete()

@@ -64,6 +64,16 @@ def compact_isk(value):
 
 
 @register.filter
+def integer_isk(value):
+    """Copy exact whole ISK by truncating, without grouping or compact units."""
+    try:
+        amount = Decimal(str(value))
+        return str(int(amount)) if amount.is_finite() else ""
+    except (InvalidOperation, TypeError, ValueError, OverflowError):
+        return ""
+
+
+@register.filter
 def tracked_item(type_id):
     try:
         return TrackedItem.objects.select_related("item").get(item__id=type_id)

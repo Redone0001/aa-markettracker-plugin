@@ -87,7 +87,7 @@
               </div>
 
               <div class="doctrine-fit-price" title="{% trans 'Cheapest complete fit, including group alternatives' %}">
-                {% if ship.price != None %}<span>{{ ship.price|compact_isk }}</span><span class="small text-muted">{% trans "per fit" %}</span>{% else %}<span class="text-muted">—</span><span class="small text-muted">{% trans "Incomplete stock" %}</span>{% endif %}
+                {% if ship.price != None %}<span>{% include "markettracker/includes/copy_price.html" with price=ship.price %}</span><span class="small text-muted">{% trans "per fit" %}</span>{% else %}<span class="text-muted">—</span><span class="small text-muted">{% trans "Incomplete stock" %}</span>{% endif %}
               </div>
 
               <div class="doctrine-fit-actions">

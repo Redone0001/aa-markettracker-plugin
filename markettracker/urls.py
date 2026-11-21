@@ -2,12 +2,13 @@ from django.urls import path
 
 from markettracker import views
 
-from . import doctrine_views
+from . import doctrine_views, price_history_views
 from .views import ItemPriceDetailView
 
 app_name = "markettracker"
 
 urlpatterns = [
+    path("price-history/", price_history_views.price_history, name="price_history"),
     path("doctrines/", doctrine_views.doctrine_list, name="doctrine_list"),
     path("doctrines/manage/", doctrine_views.manage_doctrines, name="manage_doctrines"),
     path("doctrines/<int:target_id>/multibuy/", doctrine_views.doctrine_multibuy, name="doctrine_multibuy"),

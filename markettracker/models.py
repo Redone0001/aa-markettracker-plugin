@@ -327,6 +327,116 @@ class TrackedItemGroup(models.Model):
         return max(self.desired_quantity, self.doctrine_quantity)
 
 
+class PriceHistorySettings(models.Model):
+    location = models.OneToOneField(
+        TrackedLocation, on_delete=models.CASCADE, related_name="price_history_settings"
+    )
+    interval_hours = models.PositiveSmallIntegerField(
+        default=1, choices=((1, "1 hour"), (6, "6 hours"), (24, "24 hours"))
+    )
+    retention_days = models.PositiveSmallIntegerField(
+        default=90, choices=((30, "30 days"), (90, "90 days"), (365, "365 days"))
+    )
+
+    class Meta:
+        default_permissions = ()
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(interval_hours__in=[1, 6, 24]), name="mt_history_interval"
+            ),
+            models.CheckConstraint(
+                condition=models.Q(retention_days__in=[30, 90, 365]), name="mt_history_retention"
+            ),
+        ]
+
+
+class PriceHistoryRecording(models.Model):
+    """One explicit history opt-in; selecting a fit/group never selects its items."""
+
+    location = models.ForeignKey(
+        TrackedLocation, on_delete=models.CASCADE, related_name="price_history_recordings"
+    )
+    fit_target = models.OneToOneField(
+        DoctrineFitTarget,
+        null=True,
+        blank=True,
+        on_delete=models.CASCADE,
+        related_name="price_recording",
+    )
+    tracked_item = models.OneToOneField(
+        TrackedItem,
+        null=True,
+        blank=True,
+        on_delete=models.CASCADE,
+        related_name="price_recording",
+    )
+    item_group = models.OneToOneField(
+        TrackedItemGroup,
+        null=True,
+        blank=True,
+        on_delete=models.CASCADE,
+        related_name="price_recording",
+    )
+    is_enabled = models.BooleanField(default=False)
+    last_recorded_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        default_permissions = ()
+        constraints = [
+            models.CheckConstraint(
+                condition=(
+                    models.Q(
+                        fit_target__isnull=False, tracked_item__isnull=True, item_group__isnull=True
+                    )
+                    | models.Q(
+                        fit_target__isnull=True, tracked_item__isnull=False, item_group__isnull=True
+                    )
+                    | models.Q(
+                        fit_target__isnull=True, tracked_item__isnull=True, item_group__isnull=False
+                    )
+                ),
+                name="mt_history_one_source",
+            ),
+        ]
+
+    def clean(self):
+        super().clean()
+        if (
+            sum(
+                source is not None
+                for source in (self.fit_target_id, self.tracked_item_id, self.item_group_id)
+            )
+            != 1
+        ):
+            raise ValidationError("Select exactly one fit, item, or item group.")
+        source_location = (
+            self.fit_target.tracking.location_id
+            if self.fit_target_id
+            else self.tracked_item.location_id
+            if self.tracked_item_id
+            else self.item_group.location_id
+        )
+        if source_location != self.location_id:
+            raise ValidationError("The history source must belong to the selected market location.")
+
+
+class PriceHistorySample(models.Model):
+    recording = models.ForeignKey(
+        PriceHistoryRecording, on_delete=models.CASCADE, related_name="samples", db_index=False
+    )
+    observed_at = models.DateTimeField()
+    price = models.DecimalField(max_digits=24, decimal_places=2, null=True, blank=True)
+    volume = models.PositiveBigIntegerField(default=0)
+
+    class Meta:
+        default_permissions = ()
+        constraints = [
+            models.UniqueConstraint(
+                fields=["recording", "observed_at"], name="mt_history_recording_time"
+            ),
+        ]
+
+
 class MarketOrderSnapshot(models.Model):
     tracked_item = models.ForeignKey(
         "markettracker.TrackedItem",
@@ -531,5 +641,6 @@ class General(models.Model):
         permissions = (
             ("basic_access", "Can access this app"),
             ("can_manage_stocks", "Can set tracked items"),
+            ("can_manage_price_history", "Can view and manage price history"),
             ("can_manage_deliveries", "Can see all finished deliveries and delete current ones"),
         )

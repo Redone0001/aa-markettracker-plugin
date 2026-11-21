@@ -1,0 +1,88 @@
+{% extends "markettracker/base.html" %}
+{% load i18n humanize static %}
+
+{% block extra_css %}
+  {{ block.super }}
+  <link href="{% static 'markettracker/css/management.css' %}" rel="stylesheet">
+  <link href="{% static 'markettracker/css/price_history.css' %}" rel="stylesheet">
+{% endblock %}
+
+{% block content %}
+<div class="stock-management price-history" id="price-history">
+  <header class="stock-page-header">
+    <div><h1 class="h3 mb-1">{% trans "Price history" %}</h1><p class="history-muted small mb-0">{% trans "Choose what to record at this market. Everything starts off." %}</p></div>
+    <form method="get" class="stock-location-form">
+      <input type="hidden" name="section" value="{{ section }}"><input type="hidden" name="days" value="{{ days }}">
+      <label for="history-location" class="visually-hidden">{% trans "Market location" %}</label>
+      <select id="history-location" name="loc" class="form-select form-select-sm" data-history-location>
+        {% for location in locations %}<option value="{{ location.pk }}" {% if location.pk == selected_location.pk %}selected{% endif %}>{{ location.display_name }}</option>{% endfor %}
+      </select><noscript><button type="submit">{% trans "Select" %}</button></noscript>
+    </form>
+  </header>
+
+  <nav class="stock-section-nav" aria-label="{% trans 'Price history sections' %}">
+    {% for tab in tabs %}<a href="{{ tab.url }}" class="stock-section-link {% if tab.active %}active{% endif %}" {% if tab.active %}aria-current="page"{% endif %}><i class="fa-solid {{ tab.icon }}" aria-hidden="true"></i><span>{{ tab.label }}</span><span class="stock-count">{{ tab.count }}</span></a>{% endfor %}
+  </nav>
+
+  <div class="history-toolbar">
+    <span class="history-muted small">{% blocktrans count count=enabled_count %}{{ count }} record selected for recording{% plural %}{{ count }} records selected for recording{% endblocktrans %} · {% trans "off by default" %}</span>
+    <details class="history-settings" {% if settings_open %}open{% endif %}>
+      <summary><i class="fa-solid fa-sliders me-1" aria-hidden="true"></i>{% trans "Recording settings" %}</summary>
+      <form method="post" class="card history-settings-panel">
+        {% csrf_token %}<input type="hidden" name="action" value="settings">
+        <div class="history-settings-fields">
+          {% for field in settings_form %}<div><label class="form-label small" for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}{{ field.errors }}</div>{% endfor %}
+          <button type="submit" class="btn btn-primary btn-sm">{% trans "Save settings" %}</button>
+        </div>
+        {{ settings_form.non_field_errors }}
+        <p class="small history-muted mb-1">{% blocktrans with count=total_enabled ceiling=sample_ceiling|intcomma %}{{ count }} visible records selected · at most {{ ceiling }} samples retained for these records{% endblocktrans %}</p>
+        <p class="small history-muted mb-0">{% trans "Samples follow successful market refreshes. Pausing keeps existing history until retention expires." %}</p>
+      </form>
+    </details>
+  </div>
+
+  <section class="card history-list" aria-label="{% trans 'Recording selections' %}">
+    <div class="history-list-head"><span>{% if kind == 'fit' %}{% trans "Doctrine / fitting" %}{% elif kind == 'item' %}{% trans "Item" %}{% else %}{% trans "Item group" %}{% endif %}</span><span>{% trans "Lowest price" %}</span><span>{% if kind == 'fit' %}{% trans "Complete fits" %}{% else %}{% trans "Available units" %}{% endif %}</span><span>{% trans "Record history" %}</span></div>
+    {% if kind == 'fit' %}
+      {% for group in groups %}<details class="history-doctrine" {% if group.is_open %}open{% endif %}>
+        <summary><i class="fa-solid fa-chevron-right history-chevron" aria-hidden="true"></i><i class="fa-regular fa-folder-open" aria-hidden="true"></i><span>{{ group.name }}</span>{% if not group.plan.is_shared %}<span class="badge bg-secondary">{% trans "Private" %}</span>{% endif %}<span class="history-meta history-muted ms-auto">{% blocktrans count count=group.rows|length %}{{ count }} fit{% plural %}{{ count }} fits{% endblocktrans %}</span></summary>
+        {% for row in group.rows %}{% include "markettracker/includes/price_history_row.html" %}{% empty %}<p class="p-3 mb-0 small history-muted">{% trans "No fits in this doctrine." %}</p>{% endfor %}
+      </details>{% empty %}<p class="p-3 mb-0 history-muted">{% trans "No accessible doctrines or fittings are tracked at this location." %}</p>{% endfor %}
+    {% else %}
+      {% for row in rows %}{% include "markettracker/includes/price_history_row.html" %}{% empty %}<p class="p-3 mb-0 history-muted">{% trans "No records are tracked in this section at this location." %}</p>{% endfor %}
+    {% endif %}
+    <div class="history-list-footer history-muted"><i class="fa-solid fa-circle-info me-1" aria-hidden="true"></i>{% if kind == 'fit' %}{% trans "Opt in per fit. Recording a fit does not enable its component items." %}{% elif kind == 'group' %}{% trans "Groups record their lowest member price and combined sell volume. Member items stay off." %}{% else %}{% trans "Record the lowest sell price and total available sell volume for each selected item." %}{% endif %}</div>
+    {% if page_obj.has_other_pages %}<nav class="history-pagination" aria-label="{% trans 'Recording list pages' %}">{% if page_obj.has_previous %}<a class="btn btn-outline-secondary btn-sm" href="{% querystring page=page_obj.previous_page_number record=None %}">{% trans "Previous" %}</a>{% endif %}<span class="small history-muted">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span>{% if page_obj.has_next %}<a class="btn btn-outline-secondary btn-sm" href="{% querystring page=page_obj.next_page_number record=None %}">{% trans "Next" %}</a>{% endif %}</nav>{% endif %}
+  </section>
+
+  {% if selected %}
+  <section class="history-detail" aria-label="{% trans 'Selected record price and availability' %}">
+    <div class="history-detail-heading">
+      <div><h2 class="h5 mb-1">{% trans "Price & availability" %}</h2><p class="history-muted small mb-0">{{ selected.name }} · {{ selected.subtitle }}</p></div>
+      <nav class="history-periods" aria-label="{% trans 'History period' %}">{% for period in periods %}<a href="{{ period.url }}" class="btn btn-outline-secondary btn-sm {% if days == period.days %}active{% endif %}" {% if days == period.days %}aria-current="true"{% endif %}>{% blocktrans with count=period.days %}{{ count }} days{% endblocktrans %}</a>{% endfor %}</nav>
+    </div>
+    <div class="history-readouts">
+      <div><div class="history-muted history-meta">{% if kind == 'fit' %}{% trans "Current lowest complete-fit price" %}{% else %}{% trans "Current lowest sell price" %}{% endif %}</div><div class="history-readout-value">{% if selected.price != None %}{% include "markettracker/includes/copy_price.html" with price=selected.price %}{% else %}—{% endif %}</div></div>
+      <div><div class="history-muted history-meta">{% if kind == 'fit' %}{% trans "Current complete fits available" %}{% else %}{% trans "Current units available" %}{% endif %}</div><div class="history-readout-value">{{ selected.volume|intcomma }}</div></div>
+    </div>
+    {% if samples %}
+      <div class="history-charts">
+        <div><h3 class="h6">{% trans "Lowest price" %} · {% if kind == 'fit' %}{% trans "ISK per complete fit" %}{% else %}{% trans "ISK per unit" %}{% endif %}</h3><div class="history-chart"><canvas id="history-price-chart" role="img" aria-label="{% trans 'Recorded lowest prices over time; exact values are listed below' %}"></canvas></div></div>
+        <div><h3 class="h6">{% trans "Available volume" %} · {% if kind == 'fit' %}{% trans "complete fits" %}{% else %}{% trans "total units" %}{% endif %}</h3><div class="history-chart"><canvas id="history-volume-chart" role="img" aria-label="{% trans 'Recorded available volume over time; exact values are listed below' %}"></canvas></div></div>
+      </div>
+      <details class="history-samples"><summary class="history-muted small">{% trans "Recorded samples" %} · {% blocktrans with shown=samples|length count=sample_count %}latest {{ shown }} of {{ count }} in this period{% endblocktrans %}</summary>
+        <div class="table-responsive"><table class="table table-sm"><thead><tr><th>{% trans "Observed" %}</th><th class="text-end">{% trans "Lowest price" %} · ISK</th><th class="text-end">{% if kind == 'fit' %}{% trans "Complete fits" %}{% else %}{% trans "Units" %}{% endif %}</th></tr></thead><tbody>{% for sample in samples %}<tr><td>{{ sample.observed_at|date:"j M Y, H:i T" }}</td><td class="text-end">{% if sample.price != None %}{% include "markettracker/includes/copy_price.html" with price=sample.price %}{% else %}—{% endif %}</td><td class="text-end">{{ sample.volume|intcomma }}</td></tr>{% endfor %}</tbody></table></div>
+      </details>
+      {{ history_data|json_script:"price-history-data" }}
+    {% else %}<div class="history-empty history-muted">{% trans "No history recorded for this period yet." %}<div class="small mt-1">{% if selected.is_enabled %}{% trans "The next successful market refresh will record the first sample." %}{% else %}{% trans "Enable recording for this record to start collecting prices and volume." %}{% endif %}</div></div>{% endif %}
+    <p class="history-muted small mt-3 mb-0">{% if kind == 'fit' %}{% trans "Fits record one total price and complete-fit volume. Components are not recorded. Each fit is evaluated independently against shared local stock." %}{% elif kind == 'group' %}{% trans "Groups record one lowest member price and combined volume. Members are not recorded separately." %}{% endif %} {% trans "Click any price to copy whole ISK." %}</p>
+  </section>
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_javascript %}
+  {{ block.super }}
+  {% if samples %}{% include "bundles/chart-js.html" %}{% endif %}
+  <script src="{% static 'markettracker/js/price_history.js' %}" defer></script>
+{% endblock %}

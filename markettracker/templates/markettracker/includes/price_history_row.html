@@ -1,0 +1,14 @@
+{% load i18n humanize %}
+<div class="history-row {% if row.is_selected %}history-selected{% endif %}">
+  <a class="history-record" href="{{ row.url }}" {% if row.is_selected %}aria-current="true"{% endif %}>
+    {% if kind == 'fit' %}<img src="https://images.evetech.net/types/{{ row.source.fitting.ship_type_id }}/icon?size=64" width="32" height="32" alt="" loading="lazy">{% elif kind == 'item' %}<img src="https://images.evetech.net/types/{{ row.source.item_id }}/icon?size=64" width="32" height="32" alt="" loading="lazy">{% else %}<span class="history-record-icon"><i class="fa-solid fa-layer-group" aria-hidden="true"></i></span>{% endif %}
+    <span><span class="history-record-name">{{ row.name }}</span><span class="history-muted history-meta">{{ row.subtitle }}</span></span>
+  </a>
+  <div class="history-price">{% if row.price != None %}{% include "markettracker/includes/copy_price.html" with price=row.price %}{% else %}<span class="history-muted">{% if kind == 'fit' %}{% trans "No complete fit" %}{% else %}{% trans "No sell orders" %}{% endif %}</span>{% endif %}</div>
+  <div class="history-volume"><span>{{ row.volume|intcomma }}</span><span class="history-muted history-meta">{% if kind == 'fit' %}{% trans "complete fits" %}{% else %}{% trans "units" %}{% endif %}</span></div>
+  <form method="post" class="history-record-toggle">
+    {% csrf_token %}<input type="hidden" name="action" value="toggle"><input type="hidden" name="source_id" value="{{ row.source.pk }}">
+    <label><input type="checkbox" name="enabled" value="1" data-history-toggle {% if row.is_enabled %}checked{% endif %} aria-label="{% trans 'Record history for' %} {{ row.name }}"><span>{% if row.is_enabled %}{% trans "Recording" %}{% else %}{% trans "Off" %}{% endif %}</span></label>
+    <noscript><button class="btn btn-outline-secondary btn-sm" type="submit">{% trans "Save" %}</button></noscript>
+  </form>
+</div>

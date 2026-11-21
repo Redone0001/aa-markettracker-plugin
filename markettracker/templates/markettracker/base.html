@@ -27,6 +27,9 @@
     >
         {% trans "Contracts list" %}
     </a>
+    {% if perms.markettracker.basic_access and perms.markettracker.can_manage_price_history %}
+    <a class="nav-link {% navactive request 'markettracker:price_history' %}" href="{% url 'markettracker:price_history' %}">{% trans "Price history" %}</a>
+    {% endif %}
     {% if perms.markettracker.can_manage_stocks %}
     <a
         class="nav-link {% navactive request 'markettracker:manage_stock markettracker:manage_doctrines' %}"
@@ -71,6 +74,7 @@
 {% block extra_css %}
 {{ block.super }}
 <link href="{% static 'markettracker/vendor/select2-4.0.13.min.css' %}" rel="stylesheet">
+<link href="{% static 'markettracker/css/price_copy.css' %}" rel="stylesheet">
 <style>
 .table-responsive.table-scroll-1 {
     max-height: 30vh;
@@ -161,6 +165,7 @@ html.dark .filter-clear-btn,
 
 {% block extra_javascript %}
     {{ block.super }}
+    <script src="{% static 'markettracker/js/price_copy.js' %}" defer></script>
     <script src="{% static 'markettracker/vendor/select2-4.0.13.min.js' %}"></script>
     <script src="{% static 'markettracker/js/stat_groups.js' %}"></script>
 
