@@ -293,6 +293,7 @@ def test_history_chart_and_sample_table_use_real_recorded_data(
     response = client.get(history_url(data))
     assert response.status_code == 200
     assert response.context["history_data"][0]["price"] == "262.40"
+    assert response.context["average_lowest_price"] == Decimal("262.40")
     assert response.context["history_data"][0]["volume"] == 10
     assert b'data-copy-price="262"' in response.content
     assert b"price-history-data" in response.content
@@ -447,12 +448,110 @@ def test_viewers_can_read_history_without_management_controls(
     assert not response.context["can_manage_price_history"]
     assert response.context["samples"] == [sample]
     assert response.context["history_data"][0]["price"] == "123.45"
+    assert response.context["average_lowest_price"] == Decimal("123.45")
     assert b"data-history-location" in response.content
     assert b"data-history-toggle" not in response.content
     assert b'class="history-settings"' not in response.content
     assert b'name="action"' not in response.content
     assert b'name="source_id"' not in response.content
     assert b'class="history-record-status history-muted"' in response.content
+
+
+@pytest.mark.parametrize(
+    ("days", "expected"),
+    [(7, Decimal("150.20")), (30, Decimal("200.30")), (90, Decimal("250.40"))],
+)
+def test_average_lowest_price_uses_the_selected_period_and_record(
+    client, history_data, history_viewer, rendered_pages, days, expected
+):
+    data = history_data
+    recording = enable(data, fit_target=data.plan.fit_targets.get())
+    now = timezone.now()
+    for age, price, volume in [
+        (1, "100.10", 1),
+        (3, "200.30", 1000),
+        (10, "300.50", 10),
+        (45, "400.70", 10),
+        (100, "99999.00", 10),
+        (2, None, 0),
+    ]:
+        PriceHistorySample.objects.create(
+            recording=recording, observed_at=now - timedelta(days=age), price=price, volume=volume
+        )
+    other = enable(data, tracked_item=data.location.tracked_items.first())
+    PriceHistorySample.objects.create(recording=other, observed_at=now, price="99999.00", volume=1)
+    client.force_login(history_viewer)
+    response = client.get(history_url(data, days=days))
+    assert response.status_code == 200
+    assert response.context["average_lowest_price"] == expected
+    assert f"Average lowest price · {days} days".encode() in response.content
+    average_readout = (
+        response.content.decode().split('id="history-average-price">', 1)[1].split("</div>", 1)[0]
+    )
+    assert f'data-copy-price="{int(expected)}"' in average_readout
+
+
+def test_average_lowest_price_includes_samples_beyond_the_displayed_latest_24(
+    client, history_data, history_viewer, rendered_pages
+):
+    data = history_data
+    recording = enable(data, fit_target=data.plan.fit_targets.get())
+    now = timezone.now()
+    PriceHistorySample.objects.bulk_create(
+        [
+            PriceHistorySample(
+                recording=recording, observed_at=now - timedelta(hours=index), price=100, volume=1
+            )
+            for index in range(24)
+        ]
+        + [
+            PriceHistorySample(
+                recording=recording, observed_at=now - timedelta(days=6), price=350, volume=1
+            )
+        ]
+    )
+    client.force_login(history_viewer)
+    response = client.get(history_url(data))
+    assert response.status_code == 200
+    assert len(response.context["samples"]) == 24
+    assert response.context["sample_count"] == 25
+    assert response.context["average_lowest_price"] == Decimal("110")
+
+
+@pytest.mark.parametrize(
+    ("prices", "expected"),
+    [
+        ([], None),
+        ([None], None),
+        ([Decimal("0.00")], Decimal("0.00")),
+        ([Decimal("0.10"), Decimal("0.20")], Decimal("0.15")),
+    ],
+)
+def test_average_lowest_price_handles_missing_prices_and_preserves_decimals(
+    client, history_data, history_viewer, rendered_pages, prices, expected
+):
+    data = history_data
+    recording = enable(data, fit_target=data.plan.fit_targets.get())
+    now = timezone.now()
+    PriceHistorySample.objects.bulk_create(
+        [
+            PriceHistorySample(
+                recording=recording, observed_at=now - timedelta(hours=index), price=price, volume=1
+            )
+            for index, price in enumerate(prices)
+        ]
+    )
+    client.force_login(history_viewer)
+    response = client.get(history_url(data))
+    assert response.status_code == 200
+    assert response.context["average_lowest_price"] == expected
+    average_readout = (
+        response.content.decode().split('id="history-average-price">', 1)[1].split("</div>", 1)[0]
+    )
+    if expected is None:
+        assert average_readout == "—"
+    else:
+        assert f'data-copy-price="{int(expected)}"' in average_readout
 
 
 @pytest.mark.parametrize("action", ["toggle", "settings"])

@@ -176,6 +176,11 @@ to change them are rejected for viewers. Stock-management permission alone
 does not grant history access. Both roles see shared doctrines; viewing or
 configuring private doctrine history additionally requires `can_manage_stocks`.
 
+The **Average lowest price** readout averages all recorded lowest-price samples
+for the selected record over the chosen 7, 30, or 90 days. Samples without a
+price are excluded. The average is clickable to copy whole ISK, and shows a
+dash when the selected period has no priced samples.
+
 Recording is off by default. Merely opening the page creates no settings,
 recording rules, or samples. Each enabled fitting records its cheapest complete
 fit price and complete fits available, evaluated independently against local

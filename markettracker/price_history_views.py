@@ -1,6 +1,7 @@
 """Permission-gated history browsing and explicit recording configuration."""
 
 from datetime import timedelta
+from decimal import Decimal
 from urllib.parse import urlencode
 
 from django import forms
@@ -241,6 +242,8 @@ def price_history(request):
             .samples.filter(observed_at__gte=timezone.now() - timedelta(days=days))
             .order_by("observed_at")
         )
+    prices = [sample.price for sample in samples if sample.price is not None]
+    average_lowest_price = sum(prices, Decimal(0)) / len(prices) if prices else None
     recording_qs = visible_recordings(location.pk, include_private=include_private).filter(
         is_enabled=True
     )
@@ -264,6 +267,7 @@ def price_history(request):
             "rows": rows,
             "page_obj": page,
             "selected": selected,
+            "average_lowest_price": average_lowest_price,
             "settings_form": settings_form,
             "settings_open": settings_open,
             "enabled_count": enabled_count,

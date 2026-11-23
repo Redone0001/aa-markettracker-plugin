@@ -65,6 +65,7 @@
     </div>
     <div class="history-readouts">
       <div><div class="history-muted history-meta">{% if kind == 'fit' %}{% trans "Current lowest complete-fit price" %}{% else %}{% trans "Current lowest sell price" %}{% endif %}</div><div class="history-readout-value">{% if selected.price != None %}{% include "markettracker/includes/copy_price.html" with price=selected.price %}{% else %}—{% endif %}</div></div>
+      <div><div class="history-muted history-meta" title="{% trans 'Average of all recorded lowest prices in the selected period, excluding samples without a price' %}">{% blocktrans with count=days %}Average lowest price · {{ count }} days{% endblocktrans %}</div><div class="history-readout-value" id="history-average-price">{% if average_lowest_price != None %}{% include "markettracker/includes/copy_price.html" with price=average_lowest_price %}{% else %}—{% endif %}</div></div>
       <div><div class="history-muted history-meta">{% if kind == 'fit' %}{% trans "Current complete fits available" %}{% else %}{% trans "Current units available" %}{% endif %}</div><div class="history-readout-value">{{ selected.volume|intcomma }}</div></div>
     </div>
     {% if samples %}
