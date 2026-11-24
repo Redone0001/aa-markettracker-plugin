@@ -28,7 +28,7 @@ The plugin **does not require** the `structures` app. It uses a numeric
 - Alliance Auth `>=5.0,<6` (tested with 5.0.1 and 5.2.0)
 - Django `>=5.2,<6`
 - django-esi `>=9.4,<11`
-- django-eveonline-sde `>=0.1,<1`
+- django-eveonline-sde `>=0.2.0,<3` (tested with 0.2.0, 1.0.0 and 2.0.0)
 - Celery `>=5.5,<6` and django-celery-beat `>=2.8`
 - django-eveuniverse `>=2,<3`
 - Fittings `>=2.3.2,<3`
@@ -46,13 +46,13 @@ below 10.
 pip install aa-markettracker-plugin
 ```
 
-### Install the Alliance Auth 5 beta branch
+### Install the Alliance Auth 5 beta from Git
 
 Until the 2.0 release is published on PyPI, install or reinstall the current
-Alliance Auth 5 beta directly from the `aa5-upgrade` branch:
+Alliance Auth 5 beta directly from the `main` branch:
 
 ```bash
-python -m pip install --force-reinstall --no-deps --no-cache-dir "git+https://github.com/Redone0001/aa-markettracker-plugin.git@aa5-upgrade"
+python -m pip install --force-reinstall --no-deps --no-cache-dir "git+https://github.com/Redone0001/aa-markettracker-plugin.git@main"
 ```
 
 The `--no-deps` option deliberately prevents pip from changing the Alliance
@@ -84,6 +84,37 @@ python manage.py collectstatic --noinput
 ```
 
 Restart the AllianceAuth web and Celery services after the update.
+
+### Upgrading django-eveonline-sde
+
+MarketTracker supports both SDE 0.2.0 and 2.0.0; upgrading MarketTracker does
+not require moving an existing SDE 0.2.0 installation to 2.0.0. Pin the chosen
+SDE version in your site's requirements, and check that every installed plugin
+supports it before upgrading this shared dependency.
+
+For the first upgrade to SDE 2.0.0, back up the complete database and frozen
+package requirements, pause the web, Celery worker and beat services, and
+install the chosen versions with their dependencies. SDE 2.0.0 requires
+`django-modeltranslation>=0.20.6,<0.21` and includes database migrations. Keep
+`modeltranslation` first in `INSTALLED_APPS`, then run:
+
+```bash
+python manage.py migrate --plan
+python manage.py migrate
+python manage.py esde_load_sde --plan
+python manage.py esde_load_sde --full
+python -m pip check
+```
+
+SDE 2.0.0 defaults to CCP's REST SDE source. Its first REST update reloads all
+SDE models; the explicit full load above ensures that refresh completes before
+services restart. No additional MarketTracker migration is required for SDE
+2.0.0. Saved stat-based item groups keep their membership until you save them
+again to refresh their matches.
+
+If rollback is needed, restore the database and matching package environment
+together. Reinstalling older packages alone cannot recover rows deduplicated
+by the SDE migrations.
 
 ## Upgrading from Alliance Auth 4 / MarketTracker 1.4
 

@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 def test_package_is_marked_as_a_beta_release():
-    assert __version__ == "2.0.9b1"
+    assert __version__ == "2.0.10b1"
 
 
 def test_project_metadata_targets_alliance_auth_5():
@@ -21,7 +21,7 @@ def test_project_metadata_targets_alliance_auth_5():
     assert "allianceauth>=5.0,<6" in dependencies
     assert "django>=5.2,<6" in dependencies
     assert "django-esi>=9.4,<11" in dependencies
-    assert "django-eveonline-sde>=0.1,<1" in dependencies
+    assert "django-eveonline-sde>=0.2.0,<3" in dependencies
 
 
 def test_markettracker_base_extends_aa5_bootstrap_template():
